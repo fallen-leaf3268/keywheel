@@ -1,0 +1,12 @@
+build/
+.gradle/
+run/
+run-data/
+*.lock
+out/
+.classpath
+.project
+.settings/
+bin/
+*.iml
+.idea/

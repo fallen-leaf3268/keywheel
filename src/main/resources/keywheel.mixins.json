@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.example.keywheel.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "keywheel.refmap.json",
+  "client": [
+    "KeyboardHandlerMixin",
+    "KeyMappingSetAllMixin",
+    "KeyMappingSetKeyMixin",
+    "KeyEntryWheelMixin",
+    "KeyMappingClickCountAccessor",
+    "KeyEntryAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "conformVisibility": true
+  }
+}

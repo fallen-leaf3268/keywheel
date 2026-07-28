@@ -1,0 +1,9 @@
+{
+  "key.keywheel.title": "按键轮盘",
+  "key.keywheel.release_to_select": "松开物理键以选择",
+  "key.keywheel.wheel_members": "按键轮盘成员",
+  "key.keywheel.open_members": "按键轮盘成员",
+  "key.keywheel.wheel_toggle_tooltip": "勾选后进入该按键的按键轮盘中",
+  "key.keywheel.swap_mode": "交换模式",
+  "key.keywheel.no_tap_func": "无可交换功能"
+}

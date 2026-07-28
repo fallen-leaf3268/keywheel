@@ -1,0 +1,9 @@
+{
+  "key.keywheel.title": "Key Wheel",
+  "key.keywheel.release_to_select": "Release physical key to select",
+  "key.keywheel.wheel_members": "Wheel Members",
+  "key.keywheel.open_members": "Wheel Members",
+  "key.keywheel.wheel_toggle_tooltip": "Check to include this keybind in the key wheel",
+  "key.keywheel.swap_mode": "Swap mode",
+  "key.keywheel.no_tap_func": "Nothing to swap"
+}
