@@ -13,25 +13,30 @@ public final class ActionExecutor {
 
     public static void run(KeyMapping target) {
         if (target == null) return;
-        WheelActionBridge.addForceAllow(target);
-        target.setDown(true);
-        WheelActionBridge.clearForceAllow();
-        ((KeyMappingClickCountAccessor)(Object) target).keywheel$setClickCount(1);
-        synchronized (pendingSetDownFalse) {
-            pendingSetDownFalse.add(target);
-        }
+        execute(List.of(target));
     }
 
     public static void runBatch(List<KeyMapping> targets) {
         if (targets == null || targets.isEmpty()) return;
-        for (KeyMapping t : targets) {
-            WheelActionBridge.addForceAllow(t);
-            ((KeyMappingClickCountAccessor)(Object) t).keywheel$setClickCount(1);
-            t.setDown(true);
-        }
-        WheelActionBridge.clearForceAllow();
-        synchronized (pendingSetDownFalse) {
-            pendingSetDownFalse.addAll(targets);
+        execute(targets);
+    }
+
+    private static void execute(List<KeyMapping> targets) {
+        List<KeyMapping> activated = new ArrayList<>(targets.size());
+        try {
+            for (KeyMapping target : targets) {
+                WheelActionBridge.addForceAllow(target);
+            }
+            for (KeyMapping target : targets) {
+                ((KeyMappingClickCountAccessor)(Object) target).keywheel$setClickCount(1);
+                target.setDown(true);
+                activated.add(target);
+            }
+        } finally {
+            WheelActionBridge.clearForceAllow();
+            synchronized (pendingSetDownFalse) {
+                pendingSetDownFalse.addAll(activated);
+            }
         }
     }
 

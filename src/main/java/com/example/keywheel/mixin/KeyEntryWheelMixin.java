@@ -58,40 +58,25 @@ public abstract class KeyEntryWheelMixin {
                                      float partial, CallbackInfo ci) {
         if (wheelWidget == null) return;
         wheelWidget.setX(changeButton.getX() - 30);
-        wheelWidget.setY(resetButton.getY());
+        wheelWidget.setY(resetButton.getY() + (resetButton.getHeight() - wheelWidget.getHeight()) / 2 + 1);
         wheelWidget.render(gg, mouseX, mouseY, partial);
     }
 
     private void keywheel$refreshWidget() {
         boolean show = WheelConflictIndex.contains(key.getKey()) && !key.isUnbound();
         if (wheelWidget == null && show) {
-            boolean on = false;
-            for (String id : KeyWheelConfig.MEMBERS.get()) {
-                if (id != null && id.equals(key.getName())) { on = true; break; }
-            }
+            boolean on = KeyWheelConfig.isMember(key.getName());
             wheelWidget = new WheelToggleWidget(0, 0, on);
             wheelWidget.onToggle = this::keywheel$persist;
         } else if (wheelWidget != null && !show) {
             wheelWidget = null;
         } else if (wheelWidget != null) {
-            boolean on = false;
-            for (String id : KeyWheelConfig.MEMBERS.get()) {
-                if (id != null && id.equals(key.getName())) { on = true; break; }
-            }
-            wheelWidget.on = on;
+            wheelWidget.on = KeyWheelConfig.isMember(key.getName());
         }
     }
 
     private void keywheel$persist() {
         if (wheelWidget == null) return;
-        boolean on = wheelWidget.on;
-        List<String> out = new ArrayList<>();
-        for (String id : KeyWheelConfig.MEMBERS.get()) {
-            if (id == null) continue;
-            if (!id.equals(key.getName())) out.add(id);
-        }
-        if (on) out.add(key.getName());
-        KeyWheelConfig.MEMBERS.set(out);
-        KeyWheelConfig.MEMBERS.save();
+        KeyWheelConfig.setMember(key.getName(), wheelWidget.on);
     }
 }

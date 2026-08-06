@@ -1,5 +1,6 @@
 package com.example.keywheel.compat;
 
+import com.example.keywheel.KeyWheel;
 import com.example.keywheel.config.KeyWheelConfig;
 import com.example.keywheel.mixin.KeyEntryAccessor;
 import com.example.keywheel.screen.WheelConflictIndex;
@@ -24,6 +25,8 @@ public class ControllingCompat {
 
     private static final Map<String, WheelToggleWidget> WIDGETS = new HashMap<>();
     private static boolean registered = false;
+    private static boolean renderFailureLogged = false;
+    private static boolean listenerFailureLogged = false;
 
     public static void init() {
         if (registered) return;
@@ -46,11 +49,16 @@ public class ControllingCompat {
                     if (!WheelConflictIndex.contains(key.getKey()) || key.isUnbound()) return;
                     WheelToggleWidget w = getWidget(key);
                     w.setX((int) getX.invoke(event) + 75);
-                    w.setY((int) getY.invoke(event));
+                    w.setY((int) getY.invoke(event) + 5);
                     w.render((net.minecraft.client.gui.GuiGraphics) getGuiGraphics.invoke(event),
                             (int) getMouseX.invoke(event), (int) getMouseY.invoke(event),
                             (float) getPartialTicks.invoke(event));
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    if (!renderFailureLogged) {
+                        renderFailureLogged = true;
+                        KeyWheel.LOG.warn("Controlling render compatibility failed", e);
+                    }
+                }
             };
             IEventBus bus = MinecraftForge.EVENT_BUS;
             bus.addListener(EventPriority.NORMAL, false, (Class) cls, (Consumer) renderHandler);
@@ -66,10 +74,18 @@ public class ControllingCompat {
                     if (key == null) return;
                     if (!WheelConflictIndex.contains(key.getKey()) || key.isUnbound()) return;
                     ((List) lGetListeners.invoke(event)).add(getWidget(key));
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    if (!listenerFailureLogged) {
+                        listenerFailureLogged = true;
+                        KeyWheel.LOG.warn("Controlling listener compatibility failed", e);
+                    }
+                }
             };
             bus.addListener(EventPriority.NORMAL, false, (Class) listenersCls, (Consumer) listenersHandler);
-        } catch (Exception ignored) {}
+        } catch (ClassNotFoundException ignored) {
+        } catch (Exception e) {
+            KeyWheel.LOG.warn("Controlling compatibility initialization failed", e);
+        }
     }
 
     private static Field keyField;
@@ -88,29 +104,21 @@ public class ControllingCompat {
     }
 
     private static WheelToggleWidget getWidget(KeyMapping key) {
-        return WIDGETS.computeIfAbsent(key.getName(), k -> {
+        WheelToggleWidget widget = WIDGETS.computeIfAbsent(key.getName(), k -> {
             boolean on = isEnabled(key);
             WheelToggleWidget w = new WheelToggleWidget(0, 0, on);
             w.onToggle = () -> persist(key, w);
             return w;
         });
+        widget.on = isEnabled(key);
+        return widget;
     }
 
     private static boolean isEnabled(KeyMapping key) {
-        for (String id : KeyWheelConfig.MEMBERS.get()) {
-            if (id != null && id.equals(key.getName())) return true;
-        }
-        return false;
+        return KeyWheelConfig.isMember(key.getName());
     }
 
     private static void persist(KeyMapping key, WheelToggleWidget widget) {
-        List<String> out = new java.util.ArrayList<>();
-        for (String id : KeyWheelConfig.MEMBERS.get()) {
-            if (id == null) continue;
-            if (!id.equals(key.getName())) out.add(id);
-        }
-        if (widget.on) out.add(key.getName());
-        KeyWheelConfig.MEMBERS.set(out);
-        KeyWheelConfig.MEMBERS.save();
+        KeyWheelConfig.setMember(key.getName(), widget.on);
     }
 }

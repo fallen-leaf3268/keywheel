@@ -5,5 +5,19 @@
   "key.keywheel.open_members": "按键轮盘成员",
   "key.keywheel.wheel_toggle_tooltip": "勾选后进入该按键的按键轮盘中",
   "key.keywheel.swap_mode": "交换模式",
-  "key.keywheel.no_tap_func": "无可交换功能"
+  "key.keywheel.no_tap_func": "无可交换功能",
+  "key.keywheel.config_title": "按键轮盘配置",
+  "key.keywheel.pick_icon": "选择图标",
+  "key.keywheel.config": "配置",
+  "key.keywheel.config_desc": "✓=放入轮盘 ✗=移除  🚫=禁止放入  ⬜=允许放入",
+  "key.keywheel.preview_label": "个功能",
+  "key.keywheel.pick_icon_title": "选择轮盘图标",
+  "key.keywheel.icon_search": "搜索物品...",
+  "key.keywheel.clear_icon": "清空材质",
+  "key.keywheel.remove_from_wheel": "移出轮盘",
+  "key.keywheel.empty_config_hint": "点击左下角功能名称添加",
+  "key.keywheel.tooltip_add_to_wheel": "放入轮盘",
+  "key.keywheel.tooltip_unlock_then_add": "解锁后即可放入轮盘",
+  "key.keywheel.tooltip_lock": "禁止放入轮盘配置",
+  "key.keywheel.tooltip_unlock": "正常使用轮盘功能"
 }

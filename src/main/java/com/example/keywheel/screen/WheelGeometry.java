@@ -5,11 +5,13 @@ public final class WheelGeometry {
 
     public static final float RAD2DEG = (float)(180.0 / Math.PI);
 
-    public static int indexFromMouse(double mouseX, double mouseY, double cx, double cy, int sectorCount, double deadZone) {
+    public static int indexFromMouse(double mouseX, double mouseY, double cx, double cy,
+                                     int sectorCount, double deadZone, double outerRadius) {
         double dx = mouseX - cx;
         double dy = mouseY - cy;
         double distSq = dx * dx + dy * dy;
         if (distSq < deadZone * deadZone) return -1;
+        if (distSq >= outerRadius * outerRadius) return -1;
         if (sectorCount <= 0) return -1;
 
         double angle = Math.atan2(dy, dx) + Math.PI / 2.0 + (Math.PI * 2.0 / sectorCount) / 2.0;

@@ -221,3 +221,20 @@ publishing {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
+
+tasks.register('keyWheelRegressionTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.example.keywheel.input.KeyWheelRegressionTest'
+    def regressionDir = layout.buildDirectory.dir('regression-test')
+    workingDir regressionDir
+    doFirst { regressionDir.get().asFile.mkdirs() }
+}
+
+tasks.named('test').configure {
+    enabled = false
+}
+
+tasks.named('check').configure {
+    dependsOn 'keyWheelRegressionTest'
+}

@@ -9,7 +9,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,8 +22,32 @@ public class LongPressWatcher {
     private static long cacheStamp = 0L;
     private static boolean suppressUntilRelease = false;
 
+    public static KeyMapping consumePendingPrimary(InputConstants.Key key) {
+        if (key == null) return null;
+        String mappingId = KeyWheelConfig.getSwapPrimary(key.getName());
+        if (mappingId == null) return null;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && mc.options != null) {
+            for (KeyMapping mapping : mc.options.keyMappings) {
+                if (mapping.getName().equals(mappingId)
+                        && mapping.getKey().equals(key)
+                        && !KeyWheelConfig.isMember(mappingId)
+                        && !KeyWheelConfig.isBanned(mappingId)) {
+                    return mapping;
+                }
+            }
+        }
+        KeyWheelConfig.setSwapPrimary(key.getName(), null);
+        return null;
+    }
+
     public static void suppressUntilRelease() {
         suppressUntilRelease = true;
+    }
+
+    public static void invalidateMemberCache() {
+        cachedIds = new ArrayList<>();
+        cacheStamp = 0L;
     }
 
     @SubscribeEvent
@@ -35,6 +58,7 @@ public class LongPressWatcher {
 
         var mc = Minecraft.getInstance();
         if (mc.player == null) return;
+        if (mc.screen != null && !(mc.screen instanceof WheelScreen)) return;
 
         int threshold = KeyWheelConfig.HELD_TICKS_THRESHOLD.get();
         Set<InputConstants.Key> wheelKeys = WheelConflictIndex.wheelKeys();
@@ -63,7 +87,10 @@ public class LongPressWatcher {
 
         if (pressedKey == null) {
             if (STATE.isActive() && !STATE.thresholdReached) {
-                if (!STATE.nonMemberTargets.isEmpty()) {
+                KeyMapping primary = consumePendingPrimary(STATE.physicalKey);
+                if (primary != null) {
+                    ActionExecutor.run(primary);
+                } else if (!STATE.nonMemberTargets.isEmpty()) {
                     ActionExecutor.runBatch(STATE.nonMemberTargets);
                 }
             }
@@ -76,7 +103,6 @@ public class LongPressWatcher {
             STATE.ticksHeld = 0;
             STATE.thresholdReached = false;
             categorizeMappings(pressedKey);
-            // wheel key detected
         }
 
         STATE.ticksHeld++;
@@ -94,11 +120,7 @@ public class LongPressWatcher {
         if (wheelKeys.isEmpty()) return null;
         long window = mc.getWindow().getWindow();
         for (InputConstants.Key key : wheelKeys) {
-            if (key.getType() == InputConstants.Type.KEYSYM) {
-                if (GLFW.glfwGetKey(window, key.getValue()) == GLFW.GLFW_PRESS) {
-                    return key;
-                }
-            }
+            if (PhysicalKeyState.isPressed(window, key)) return key;
         }
         return null;
     }
@@ -131,8 +153,8 @@ public class LongPressWatcher {
 
     private static List<String> currentEnabledIds() {
         long now = System.currentTimeMillis();
-        if (now - cacheStamp < 1000L && !cachedIds.isEmpty() || (now - cacheStamp < 250L)) {
-            if (now - cacheStamp < 500L) return cachedIds;
+        if (now - cacheStamp < 1000L) {
+            return cachedIds;
         }
         List<String> out = new ArrayList<>();
         List<String> stored = KeyWheelConfig.MEMBERS.get();

@@ -6,11 +6,13 @@
   "refmap": "keywheel.refmap.json",
   "client": [
     "KeyboardHandlerMixin",
+    "MouseHandlerMixin",
     "KeyMappingSetAllMixin",
     "KeyMappingSetKeyMixin",
     "KeyEntryWheelMixin",
     "KeyMappingClickCountAccessor",
-    "KeyEntryAccessor"
+    "KeyEntryAccessor",
+    "ScreenRenderablesAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

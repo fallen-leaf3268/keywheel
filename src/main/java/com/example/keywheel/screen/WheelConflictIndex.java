@@ -1,6 +1,7 @@
 package com.example.keywheel.screen;
 
 import com.example.keywheel.config.KeyWheelConfig;
+import com.example.keywheel.input.PhysicalKeyState;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -18,6 +19,7 @@ public final class WheelConflictIndex {
     private WheelConflictIndex() {}
 
     public static boolean contains(InputConstants.Key k) {
+        if (k == null || !PhysicalKeyState.isSupported(k.getType())) return false;
         ensure();
         return CONFLICT_KEYS.contains(k);
     }
@@ -30,6 +32,8 @@ public final class WheelConflictIndex {
     public static void reset() {
         CONFLICT_KEYS.clear();
         initialized = false;
+        wheelKeysCache = Set.of();
+        wheelKeysStamp = 0L;
     }
 
     private static Set<InputConstants.Key> wheelKeysCache = Set.of();
@@ -48,9 +52,11 @@ public final class WheelConflictIndex {
                 if (mc != null && mc.options != null && mc.options.keyMappings != null) {
                     Set<String> memberSet = new HashSet<>(members);
                     for (KeyMapping km : mc.options.keyMappings) {
-                        if (memberSet.contains(km.getName())) {
-                            keys.add(km.getKey());
-                        }
+                        boolean member = memberSet.contains(km.getName());
+                        if (!member) continue;
+                        InputConstants.Key key = km.getKey();
+                        boolean supported = PhysicalKeyState.isSupported(key.getType());
+                        if (supported && shouldIncludeWheelKey(member, contains(key))) keys.add(key);
                     }
                 }
             }
@@ -58,6 +64,10 @@ public final class WheelConflictIndex {
         wheelKeysCache = Set.copyOf(keys);
         wheelKeysStamp = now;
         return wheelKeysCache;
+    }
+
+    static boolean shouldIncludeWheelKey(boolean member, boolean currentConflict) {
+        return member && currentConflict;
     }
 
     private static void ensure() {
@@ -68,6 +78,7 @@ public final class WheelConflictIndex {
         Map<InputConstants.Key, Integer> cnt = new HashMap<>();
         for (KeyMapping km : mc.options.keyMappings) {
             if (km.getCategory().equals("key.categories.keywheel")) continue;
+            if (!PhysicalKeyState.isSupported(km.getKey().getType())) continue;
             cnt.merge(km.getKey(), 1, Integer::sum);
         }
         for (var e : cnt.entrySet()) {
