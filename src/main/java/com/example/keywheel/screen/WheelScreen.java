@@ -97,7 +97,7 @@ public class WheelScreen extends Screen {
                     SwapModeWidget.swapMembers(km);
                     return true;
                 }
-                ActionExecutor.run(km);
+                ActionExecutor.runWheelAction(km);
             }
         }
         return true;
@@ -174,7 +174,7 @@ public class WheelScreen extends Screen {
                         }
                         return true;
                     }
-                    ActionExecutor.run(km);
+                    ActionExecutor.runWheelAction(km);
                 }
             }
         }

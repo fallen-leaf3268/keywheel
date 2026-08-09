@@ -1,16 +1,23 @@
 package com.example.keywheel.config;
 
 import com.example.keywheel.input.LongPressWatcher;
+import com.example.keywheel.input.ActionExecutor;
 import com.example.keywheel.screen.WheelConflictIndex;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 import net.minecraftforge.common.ForgeConfigSpec;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @SuppressWarnings("unchecked")
 public final class KeyWheelConfig {
     private static final char SWAP_PRIMARY_SEPARATOR = '|';
+    private static volatile Set<String> lockedIdsCache = Set.of();
+    private static volatile List<String> lockedIdsSource;
+    private static volatile List<String> lockedMembersSource;
 
     private KeyWheelConfig() {}
 
@@ -21,6 +28,8 @@ public final class KeyWheelConfig {
     public static final ForgeConfigSpec.ConfigValue<List<String>> MEMBERS;
     public static final ForgeConfigSpec.ConfigValue<List<String>> ICONS;
     public static final ForgeConfigSpec.ConfigValue<List<String>> BANNED;
+    public static final ForgeConfigSpec.ConfigValue<List<String>> LOCKED;
+    public static final ForgeConfigSpec.ConfigValue<List<String>> HOLD_ENABLED;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -41,6 +50,10 @@ public final class KeyWheelConfig {
                 (ForgeConfigSpec.ConfigValue<?>) b.defineListAllowEmpty("icons", ArrayList::new, s -> s instanceof String);
         BANNED = (ForgeConfigSpec.ConfigValue<List<String>>)
                 (ForgeConfigSpec.ConfigValue<?>) b.defineListAllowEmpty("banned", ArrayList::new, s -> s instanceof String);
+        LOCKED = (ForgeConfigSpec.ConfigValue<List<String>>)
+                (ForgeConfigSpec.ConfigValue<?>) b.defineListAllowEmpty("locked", ArrayList::new, s -> s instanceof String);
+        HOLD_ENABLED = (ForgeConfigSpec.ConfigValue<List<String>>)
+                (ForgeConfigSpec.ConfigValue<?>) b.defineListAllowEmpty("hold_enabled", ArrayList::new, s -> s instanceof String);
         b.pop();
 
         SPEC = b.build();
@@ -155,8 +168,11 @@ public final class KeyWheelConfig {
     }
 
     public static void replaceMembers(List<String> members) {
-        MEMBERS.set(updatedMembership(members, null, false));
+        List<String> normalizedMembers = updatedMembership(members, null, false);
+        MEMBERS.set(normalizedMembers);
         MEMBERS.save();
+        replaceLocked(retainedLockedMembers(LOCKED.get(), normalizedMembers));
+        replaceHeld(retainedHeldMembers(HOLD_ENABLED.get(), normalizedMembers));
         invalidateRuntimeCaches();
     }
 
@@ -182,5 +198,115 @@ public final class KeyWheelConfig {
         if (!banned) list.remove(kmName);
         BANNED.set(list);
         BANNED.save();
+        if (banned) {
+            setLocked(kmName, false);
+            setHoldEnabled(kmName, false);
+        }
+    }
+
+    public static boolean isLocked(String kmName) {
+        return kmName != null && lockedIds().contains(kmName);
+    }
+
+    public static void setLocked(String kmName, boolean locked) {
+        if (kmName == null) return;
+        List<String> list = updatedMembership(LOCKED.get(), kmName,
+                locked && isMember(kmName));
+        replaceLocked(retainedLockedMembers(list, MEMBERS.get()));
+        if (locked && isLocked(kmName)) clearMappingState(kmName);
+    }
+
+    static List<String> retainedLockedMembers(List<String> locked, List<String> members) {
+        Set<String> memberIds = members == null ? Set.of() : new LinkedHashSet<>(members);
+        LinkedHashSet<String> retained = new LinkedHashSet<>();
+        if (locked != null) {
+            for (String id : locked) {
+                if (id != null && memberIds.contains(id)) retained.add(id);
+            }
+        }
+        return new ArrayList<>(retained);
+    }
+
+    public static boolean isHoldEnabled(String kmName) {
+        return kmName != null && isMember(kmName) && HOLD_ENABLED.get().contains(kmName);
+    }
+
+    public static void setHoldEnabled(String kmName, boolean enabled) {
+        if (kmName == null) return;
+        List<String> updated = updatedMembership(HOLD_ENABLED.get(), kmName,
+                enabled && isMember(kmName));
+        replaceHeld(retainedHeldMembers(updated, MEMBERS.get()));
+        if (!enabled) clearHeldMappingState(kmName);
+    }
+
+    static List<String> retainedHeldMembers(List<String> held, List<String> members) {
+        Set<String> memberIds = members == null ? Set.of() : new LinkedHashSet<>(members);
+        LinkedHashSet<String> retained = new LinkedHashSet<>();
+        if (held != null) {
+            for (String id : held) {
+                if (id != null && memberIds.contains(id)) retained.add(id);
+            }
+        }
+        return new ArrayList<>(retained);
+    }
+
+    public static void invalidateLockedCache() {
+        synchronized (KeyWheelConfig.class) {
+            lockedIdsSource = null;
+            lockedMembersSource = null;
+            lockedIdsCache = Set.of();
+        }
+    }
+
+    private static Set<String> lockedIds() {
+        List<String> locked = LOCKED.get();
+        List<String> members = MEMBERS.get();
+        if (locked != lockedIdsSource || members != lockedMembersSource) {
+            synchronized (KeyWheelConfig.class) {
+                if (locked != lockedIdsSource || members != lockedMembersSource) {
+                    lockedIdsCache = Set.copyOf(retainedLockedMembers(locked, members));
+                    lockedIdsSource = locked;
+                    lockedMembersSource = members;
+                }
+            }
+        }
+        return lockedIdsCache;
+    }
+
+    private static void replaceLocked(List<String> locked) {
+        if (!locked.equals(LOCKED.get())) {
+            LOCKED.set(locked);
+            LOCKED.save();
+        }
+        invalidateLockedCache();
+    }
+
+    private static void replaceHeld(List<String> held) {
+        List<String> previous = HOLD_ENABLED.get();
+        if (!held.equals(previous)) {
+            HOLD_ENABLED.set(held);
+            HOLD_ENABLED.save();
+        }
+        if (previous != null) {
+            for (String id : previous) {
+                if (id != null && !held.contains(id)) clearHeldMappingState(id);
+            }
+        }
+    }
+
+    private static void clearMappingState(String kmName) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.options == null) return;
+        for (KeyMapping mapping : minecraft.options.keyMappings) {
+            if (kmName.equals(mapping.getName())) ActionExecutor.clear(mapping);
+        }
+    }
+
+    private static void clearHeldMappingState(String kmName) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null || minecraft.options == null) return;
+        for (KeyMapping mapping : minecraft.options.keyMappings) {
+            if (kmName.equals(mapping.getName())) ActionExecutor.clearHeld(mapping);
+        }
     }
 }

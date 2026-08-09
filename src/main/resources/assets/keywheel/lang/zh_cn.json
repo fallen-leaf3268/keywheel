@@ -19,5 +19,8 @@
   "key.keywheel.tooltip_add_to_wheel": "放入轮盘",
   "key.keywheel.tooltip_unlock_then_add": "解锁后即可放入轮盘",
   "key.keywheel.tooltip_lock": "禁止放入轮盘配置",
-  "key.keywheel.tooltip_unlock": "正常使用轮盘功能"
+  "key.keywheel.tooltip_unlock": "正常使用轮盘功能",
+  "key.keywheel.function_lock": "功能锁定",
+  "key.keywheel.function_lock_tooltip": "锁定后，该功能只会通过轮盘触发",
+  "key.keywheel.function_hold": "保持长按"
 }

@@ -14,5 +14,8 @@
   "key.keywheel.tooltip_add_to_wheel": "Add to wheel",
   "key.keywheel.tooltip_unlock_then_add": "Unlock first",
   "key.keywheel.tooltip_lock": "Ban from wheel config",
-  "key.keywheel.tooltip_unlock": "Normal wheel usage"
+  "key.keywheel.tooltip_unlock": "Normal wheel usage",
+  "key.keywheel.function_lock": "Function lock",
+  "key.keywheel.function_lock_tooltip": "When locked, this action can only be triggered from the wheel.",
+  "key.keywheel.function_hold": "Keep held"
 }

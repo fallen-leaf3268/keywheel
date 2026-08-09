@@ -3,6 +3,8 @@ package com.example.keywheel.screen;
 import com.example.keywheel.config.KeyWheelConfig;
 import com.example.keywheel.input.LongPressWatcher;
 import com.example.keywheel.mixin.ScreenRenderablesAccessor;
+import com.example.keywheel.widget.FunctionLockWidget;
+import com.example.keywheel.widget.FunctionHoldWidget;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -121,16 +123,28 @@ public class WheelConfigScreen extends Screen {
         if (selected != null) {
             String kmName = selected;
             boolean fnInW = memberIds.contains(kmName);
-            if (fnInW) addRenderableWidget(Button.builder(Component.translatable("key.keywheel.remove_from_wheel"), b -> {
-                KeyWheelConfig.setMember(kmName, false);
-                refreshConfigCache();
-                rebuildWidgets();
-            }).bounds(10, 56, 80, 18).build());
+            if (fnInW) {
+                addRenderableWidget(Button.builder(Component.translatable("key.keywheel.function_lock"), b ->
+                        KeyWheelConfig.setLocked(kmName, !KeyWheelConfig.isLocked(kmName)))
+                        .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable(
+                                "key.keywheel.function_lock_tooltip")))
+                        .bounds(10, 56, 80, 18).build());
+                addRenderableWidget(new FunctionLockWidget(92, 58, kmName));
+                addRenderableWidget(Button.builder(Component.translatable("key.keywheel.function_hold"), b ->
+                        KeyWheelConfig.setHoldEnabled(kmName, !KeyWheelConfig.isHoldEnabled(kmName)))
+                        .bounds(10, 78, 80, 18).build());
+                addRenderableWidget(new FunctionHoldWidget(92, 80, kmName));
+                addRenderableWidget(Button.builder(Component.translatable("key.keywheel.remove_from_wheel"), b -> {
+                    KeyWheelConfig.setMember(kmName, false);
+                    refreshConfigCache();
+                    rebuildWidgets();
+                }).bounds(10, 100, 80, 18).build());
+            }
             addRenderableWidget(Button.builder(Component.translatable("key.keywheel.clear_icon"), b -> {
                 KeyWheelConfig.setIcon(kmName, null);
                 refreshConfigCache();
                 rebuildWidgets();
-            }).bounds(10, 78, 80, 18).build());
+            }).bounds(10, fnInW ? 122 : 56, 80, 18).build());
             int pl = panelX(), pw = panelW(), navY = 44 - NAV_H - 2;
             addRenderableWidget(Button.builder(Component.literal("<"), b -> { if (page > 0) { page--; rebuildWidgets(); } }).bounds(pl + MARGIN, navY, CELL, NAV_H).build());
             addRenderableWidget(Button.builder(Component.literal(">"), b -> { if (page < totalPages() - 1) { page++; rebuildWidgets(); } }).bounds(pl + pw - MARGIN - CELL, navY, CELL, NAV_H).build());
@@ -197,13 +211,13 @@ public class WheelConfigScreen extends Screen {
             int index = WheelGeometry.indexFromMouse(mx, my, cx, cy, n, DEAD, OUTER_R);
             if (dist >= INNER_R && dist <= OUTER_R && index >= 0 && index < n) {
                 String nm = members.get(index).getName();
-                if (!nm.equals(selected)) {
+                if (shouldSelectSector(button) && !nm.equals(selected)) {
                     selected = nm;
                     page = 0;
                     filteredItems = new ArrayList<>(allItems);
                     rebuildWidgets();
                 }
-                return true;
+                if (shouldSelectSector(button)) return true;
             }
         }
         if (selected != null && button == 0) {
@@ -222,7 +236,11 @@ public class WheelConfigScreen extends Screen {
                 }
             }
         }
-        return super.mouseClicked(mx, my, button);
+        boolean handled = super.mouseClicked(mx, my, button);
+        if (shouldClearButtonFocus(handled, getFocused() instanceof Button)) {
+            setFocused(null);
+        }
+        return handled;
     }
 
     @Override
@@ -292,4 +310,10 @@ public class WheelConfigScreen extends Screen {
     }
 
     @Override public boolean isPauseScreen() { return false; }
+
+    static boolean shouldSelectSector(int button) { return button == 0; }
+
+    static boolean shouldClearButtonFocus(boolean handled, boolean buttonFocused) {
+        return handled && buttonFocused;
+    }
 }

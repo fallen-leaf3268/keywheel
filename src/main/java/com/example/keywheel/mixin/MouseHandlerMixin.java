@@ -1,6 +1,6 @@
 package com.example.keywheel.mixin;
 
-import com.example.keywheel.input.WheelActionBridge;
+import com.example.keywheel.input.ActionExecutor;
 import com.example.keywheel.screen.WheelConflictIndex;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
@@ -15,8 +15,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MouseHandlerMixin {
     @Inject(method = "onPress", at = @At("HEAD"), cancellable = true)
     private void keywheel$onMousePress(long window, int button, int action, int mods, CallbackInfo ci) {
+        ActionExecutor.releaseHeldOnInput(action);
         if (action != GLFW.GLFW_PRESS) return;
-        if (WheelActionBridge.hasForceAllow()) return;
         if (Minecraft.getInstance().screen != null) return;
         InputConstants.Key inputKey = InputConstants.Type.MOUSE.getOrCreate(button);
         if (WheelConflictIndex.wheelKeys().contains(inputKey)) {

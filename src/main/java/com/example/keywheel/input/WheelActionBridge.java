@@ -16,8 +16,8 @@ public final class WheelActionBridge {
         if (km != null) FORCE_ALLOW.add(km);
     }
 
-    public static boolean hasForceAllow() {
-        return !FORCE_ALLOW.isEmpty();
+    public static boolean isForceAllowed(KeyMapping km) {
+        return km != null && FORCE_ALLOW.contains(km);
     }
 
     public static void clearForceAllow() {

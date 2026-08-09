@@ -57,8 +57,10 @@ public class LongPressWatcher {
         ActionExecutor.flushSetDown();
 
         var mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        if (mc.screen != null && !(mc.screen instanceof WheelScreen)) return;
+        if (mc.player == null) {
+            ActionExecutor.releaseHeld();
+            return;
+        }
 
         int threshold = KeyWheelConfig.HELD_TICKS_THRESHOLD.get();
         Set<InputConstants.Key> wheelKeys = WheelConflictIndex.wheelKeys();
@@ -67,6 +69,10 @@ public class LongPressWatcher {
             if (ws.tickSelectOnRelease()) {
                 ws.onClose();
             }
+            return;
+        }
+
+        if (mc.screen != null) {
             return;
         }
 
@@ -88,10 +94,14 @@ public class LongPressWatcher {
         if (pressedKey == null) {
             if (STATE.isActive() && !STATE.thresholdReached) {
                 KeyMapping primary = consumePendingPrimary(STATE.physicalKey);
-                if (primary != null) {
+                if (primary != null && !KeyWheelConfig.isLocked(primary.getName())) {
                     ActionExecutor.run(primary);
                 } else if (!STATE.nonMemberTargets.isEmpty()) {
-                    ActionExecutor.runBatch(STATE.nonMemberTargets);
+                    List<KeyMapping> filtered = new ArrayList<>();
+                    for (KeyMapping km : STATE.nonMemberTargets) {
+                        if (!KeyWheelConfig.isLocked(km.getName())) filtered.add(km);
+                    }
+                    if (!filtered.isEmpty()) ActionExecutor.runBatch(filtered);
                 }
             }
             STATE.reset();
