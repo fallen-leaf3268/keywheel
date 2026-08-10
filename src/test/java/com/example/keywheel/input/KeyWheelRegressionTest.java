@@ -57,6 +57,7 @@ public final class KeyWheelRegressionTest {
         requireCurrentConflictEligibility();
         requireLockedInputIsolation();
         requireLockedInputEntryPoints();
+        requireSyntheticInputIsolation();
         requireLockedMembershipCleanup();
         requireLockedStateClearEntryPoint();
         requireForgeDirectMatchMixin();
@@ -283,6 +284,31 @@ public final class KeyWheelRegressionTest {
         requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingClickMixin", "keywheel$blockMatches");
         requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingClickMixin", "keywheel$blockMatchesMouse");
         requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingLookupMixin", "keywheel$filterMatch");
+    }
+
+    private static void requireSyntheticInputIsolation() throws Exception {
+        KeyMapping target = new KeyMapping("key.keywheel.replay.target", 71, "key.categories.misc");
+        KeyMapping sameKey = new KeyMapping("key.keywheel.replay.other", 71, "key.categories.misc");
+        KeyMapping otherKey = new KeyMapping("key.keywheel.replay.unrelated", 72, "key.categories.misc");
+        Class<?> context = Class.forName("com.example.keywheel.input.SyntheticInputContext");
+        var begin = context.getDeclaredMethod("begin", KeyMapping.class, InputConstants.Key.class);
+        var active = context.getDeclaredMethod("isActive");
+        var allows = context.getDeclaredMethod("allows", KeyMapping.class);
+        var shouldMask = context.getDeclaredMethod("shouldMask", KeyMapping.class, InputConstants.Key.class);
+        AutoCloseable scope = (AutoCloseable) begin.invoke(null, target, target.getKey());
+        try {
+            require((boolean) active.invoke(null), "synthetic replay context must be active inside its scope");
+            require((boolean) allows.invoke(null, target), "synthetic replay must allow its target");
+            require(!(boolean) allows.invoke(null, sameKey), "synthetic replay must isolate a same-key non-target");
+            require((boolean) shouldMask.invoke(null, sameKey, sameKey.getKey()),
+                    "same-key non-target key must be masked");
+            require(!(boolean) shouldMask.invoke(null, otherKey, otherKey.getKey()),
+                    "unrelated keys must not be masked");
+        } finally {
+            scope.close();
+        }
+        require(!(boolean) active.invoke(null), "synthetic replay context must always clear");
+        requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingClickMixin", "keywheel$maskSyntheticKey");
     }
 
     @SuppressWarnings("unchecked")

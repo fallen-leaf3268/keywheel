@@ -1,6 +1,7 @@
 package com.example.keywheel.mixin;
 
 import com.example.keywheel.config.KeyWheelConfig;
+import com.example.keywheel.input.SyntheticInputContext;
 import com.example.keywheel.input.WheelActionBridge;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
@@ -16,10 +17,16 @@ public interface ForgeKeyMappingMixin {
      */
     @Overwrite(remap = false)
     default boolean isActiveAndMatches(InputConstants.Key key) {
-        if ((Object) this instanceof KeyMapping mapping
-                && KeyWheelConfig.isLocked(mapping.getName())
-                && !WheelActionBridge.isForceAllowed(mapping)) {
-            return false;
+        if ((Object) this instanceof KeyMapping mapping) {
+            if (SyntheticInputContext.isActive()) {
+                return SyntheticInputContext.allows(mapping)
+                        && key != InputConstants.UNKNOWN
+                        && key.equals(mapping.getKey());
+            }
+            if (KeyWheelConfig.isLocked(mapping.getName())
+                    && !WheelActionBridge.isForceAllowed(mapping)) {
+                return false;
+            }
         }
         IForgeKeyMapping forgeMapping = (IForgeKeyMapping) this;
         return key != InputConstants.UNKNOWN

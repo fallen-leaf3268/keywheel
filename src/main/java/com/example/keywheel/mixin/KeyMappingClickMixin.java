@@ -1,7 +1,9 @@
 package com.example.keywheel.mixin;
 
 import com.example.keywheel.config.KeyWheelConfig;
+import com.example.keywheel.input.SyntheticInputContext;
 import com.example.keywheel.input.WheelActionBridge;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -15,6 +17,11 @@ public abstract class KeyMappingClickMixin {
     @Inject(method = "setDown", at = @At("HEAD"), cancellable = true)
     private void keywheel$guardSetDown(boolean down, CallbackInfo ci) {
         KeyMapping mapping = (KeyMapping) (Object) this;
+        if (down && !SyntheticInputContext.allows(mapping)) {
+            mapping.setDown(false);
+            ci.cancel();
+            return;
+        }
         boolean locked = KeyWheelConfig.isLocked(mapping.getName());
         boolean forceAllowed = WheelActionBridge.isForceAllowed(mapping);
         boolean blocked = shouldBlockLockedInput(locked, down, forceAllowed);
@@ -26,12 +33,22 @@ public abstract class KeyMappingClickMixin {
 
     @Inject(method = "matches", at = @At("HEAD"), cancellable = true)
     private void keywheel$blockMatches(int keyCode, int scanCode, CallbackInfoReturnable<Boolean> cir) {
-        if (isLockedOutsideWheel((KeyMapping) (Object) this)) cir.setReturnValue(false);
+        KeyMapping mapping = (KeyMapping) (Object) this;
+        if (!SyntheticInputContext.allows(mapping) || isLockedOutsideWheel(mapping)) cir.setReturnValue(false);
     }
 
     @Inject(method = "matchesMouse", at = @At("HEAD"), cancellable = true)
     private void keywheel$blockMatchesMouse(int button, CallbackInfoReturnable<Boolean> cir) {
-        if (isLockedOutsideWheel((KeyMapping) (Object) this)) cir.setReturnValue(false);
+        KeyMapping mapping = (KeyMapping) (Object) this;
+        if (!SyntheticInputContext.allows(mapping) || isLockedOutsideWheel(mapping)) cir.setReturnValue(false);
+    }
+
+    @Inject(method = "getKey", at = @At("RETURN"), cancellable = true, remap = false)
+    private void keywheel$maskSyntheticKey(CallbackInfoReturnable<InputConstants.Key> cir) {
+        KeyMapping mapping = (KeyMapping) (Object) this;
+        if (SyntheticInputContext.shouldMask(mapping, cir.getReturnValue())) {
+            cir.setReturnValue(InputConstants.UNKNOWN);
+        }
     }
 
     @Unique

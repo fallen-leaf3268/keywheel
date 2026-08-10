@@ -1,6 +1,7 @@
 package com.example.keywheel.mixin;
 
 import com.example.keywheel.config.KeyWheelConfig;
+import com.example.keywheel.input.SyntheticInputContext;
 import com.example.keywheel.input.WheelActionBridge;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
@@ -25,7 +26,8 @@ public abstract class KeyMappingLookupMixin {
             remap = false
     )
     private boolean keywheel$filterMatch(KeyMapping mapping, InputConstants.Key key) {
-        return shouldMatchLockedInput(mapping.isActiveAndMatches(key),
+        return SyntheticInputContext.allows(mapping)
+                && shouldMatchLockedInput(mapping.isActiveAndMatches(key),
                 KeyWheelConfig.isLocked(mapping.getName()),
                 WheelActionBridge.isForceAllowed(mapping));
     }
