@@ -58,6 +58,7 @@ public final class KeyWheelRegressionTest {
         requireLockedInputIsolation();
         requireLockedInputEntryPoints();
         requireSyntheticInputIsolation();
+        requireSyntheticInputReplayer();
         requireLockedMembershipCleanup();
         requireLockedStateClearEntryPoint();
         requireForgeDirectMatchMixin();
@@ -309,6 +310,20 @@ public final class KeyWheelRegressionTest {
         }
         require(!(boolean) active.invoke(null), "synthetic replay context must always clear");
         requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingClickMixin", "keywheel$maskSyntheticKey");
+    }
+
+    private static void requireSyntheticInputReplayer() throws Exception {
+        Class<?> replayer = Class.forName("com.example.keywheel.input.SyntheticInputReplayer");
+        var supports = replayer.getDeclaredMethod("supports", InputConstants.Key.class);
+        require((boolean) supports.invoke(null, InputConstants.Type.KEYSYM.getOrCreate(71)),
+                "keysym replay must be supported");
+        require((boolean) supports.invoke(null, InputConstants.Type.MOUSE.getOrCreate(0)),
+                "mouse replay must be supported");
+        require(!(boolean) supports.invoke(null, InputConstants.Type.SCANCODE.getOrCreate(1)),
+                "scancode replay must fall back");
+        requireDeclaredMethod("com.example.keywheel.mixin.MouseHandlerInvoker", "keywheel$invokeOnPress");
+        require(resource("keywheel.mixins.json").contains("\"MouseHandlerInvoker\""),
+                "mouse invoker must be registered");
     }
 
     @SuppressWarnings("unchecked")

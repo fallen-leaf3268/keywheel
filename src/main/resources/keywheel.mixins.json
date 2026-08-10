@@ -7,6 +7,7 @@
   "client": [
     "KeyboardHandlerMixin",
     "MouseHandlerMixin",
+    "MouseHandlerInvoker",
     "KeyMappingSetAllMixin",
     "KeyMappingSetKeyMixin",
     "KeyEntryWheelMixin",

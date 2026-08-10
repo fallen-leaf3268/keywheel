@@ -1,6 +1,7 @@
 package com.example.keywheel.mixin;
 
 import com.example.keywheel.input.ActionExecutor;
+import com.example.keywheel.input.SyntheticInputContext;
 import com.example.keywheel.screen.WheelConflictIndex;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyboardHandler;
@@ -14,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class KeyboardHandlerMixin {
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
     private void keywheel$onKeyPress(long window, int key, int scancode, int action, int mods, CallbackInfo ci) {
+        if (SyntheticInputContext.isActive()) return;
         ActionExecutor.releaseHeldOnInput(action);
         if (action != 1 && action != 2) return;
         if (Minecraft.getInstance().screen != null) return;
