@@ -24,7 +24,7 @@ public final class ActionExecutor {
 
     public static void run(KeyMapping target) {
         if (target == null) return;
-        execute(List.of(target), false);
+        executeOneShot(List.of(target));
     }
 
     public static void runWheelAction(KeyMapping target) {
@@ -72,7 +72,34 @@ public final class ActionExecutor {
 
     public static void runBatch(List<KeyMapping> targets) {
         if (targets == null || targets.isEmpty()) return;
-        execute(targets, false);
+        executeOneShot(targets);
+    }
+
+    static boolean shouldReplayShortPress(boolean supported, boolean clientReady) {
+        return supported && clientReady;
+    }
+
+    private static void executeOneShot(List<KeyMapping> targets) {
+        Minecraft mc = Minecraft.getInstance();
+        for (KeyMapping target : targets) {
+            if (target == null) continue;
+            InputConstants.Key key = target.getKey();
+            if (!shouldReplayShortPress(SyntheticInputReplayer.supports(key), mc != null)) {
+                execute(List.of(target), false);
+                continue;
+            }
+            if (!isCurrentMapping(mc, target, key)) continue;
+            if (!SyntheticInputReplayer.replay(target, key, GLFW.GLFW_PRESS)) {
+                execute(List.of(target), false);
+                continue;
+            }
+            synchronized (pendingSetDownFalse) {
+                pendingSetDownFalse.removeIf(mapping -> mapping == target);
+                heldMappings.remove(target);
+                heldReplayKeys.remove(target);
+                pendingReplayReleases.put(target, key);
+            }
+        }
     }
 
     private static void execute(List<KeyMapping> targets, boolean hold) {

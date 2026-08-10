@@ -60,6 +60,7 @@ public final class KeyWheelRegressionTest {
         requireSyntheticInputIsolation();
         requireSyntheticInputReplayer();
         requireDeferredReplayLifecycle();
+        requireShortPressReplayLifecycle();
         requireLockedMembershipCleanup();
         requireLockedStateClearEntryPoint();
         requireForgeDirectMatchMixin();
@@ -342,6 +343,24 @@ public final class KeyWheelRegressionTest {
                 "wheel actions must use the replayer");
         require(containsBytes(bytes, "tell".getBytes(StandardCharsets.UTF_8)),
                 "wheel replay must run after the wheel closes");
+    }
+
+    private static void requireShortPressReplayLifecycle() throws Exception {
+        require(!SyntheticInputReplayer.supports(InputConstants.UNKNOWN),
+                "unbound mappings must use the legacy short-press path");
+        Class<?> executor = Class.forName("com.example.keywheel.input.ActionExecutor");
+        var policy = executor.getDeclaredMethod("shouldReplayShortPress", boolean.class, boolean.class);
+        policy.setAccessible(true);
+        require((boolean) policy.invoke(null, true, true),
+                "supported short presses must use native input replay");
+        require(!(boolean) policy.invoke(null, false, true),
+                "unsupported short presses must use the legacy path");
+        require(!(boolean) policy.invoke(null, true, false),
+                "short-press replay requires a ready client");
+        requireDeclaredMethod("com.example.keywheel.input.ActionExecutor", "executeOneShot");
+        byte[] executorBytes = resourceBytes("com/example/keywheel/input/ActionExecutor.class");
+        require(containsBytes(executorBytes, "pendingReplayReleases".getBytes(StandardCharsets.UTF_8)),
+                "short presses must share the one-shot release lifecycle");
     }
 
     @SuppressWarnings("unchecked")

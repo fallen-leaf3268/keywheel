@@ -13,6 +13,7 @@ public final class SyntheticInputReplayer {
 
     public static boolean supports(InputConstants.Key key) {
         return key != null
+                && !InputConstants.UNKNOWN.equals(key)
                 && (key.getType() == InputConstants.Type.KEYSYM
                 || key.getType() == InputConstants.Type.MOUSE);
     }
