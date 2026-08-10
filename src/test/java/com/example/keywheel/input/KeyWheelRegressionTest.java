@@ -59,6 +59,7 @@ public final class KeyWheelRegressionTest {
         requireLockedInputEntryPoints();
         requireSyntheticInputIsolation();
         requireSyntheticInputReplayer();
+        requireDeferredReplayLifecycle();
         requireLockedMembershipCleanup();
         requireLockedStateClearEntryPoint();
         requireForgeDirectMatchMixin();
@@ -324,6 +325,23 @@ public final class KeyWheelRegressionTest {
         requireDeclaredMethod("com.example.keywheel.mixin.MouseHandlerInvoker", "keywheel$invokeOnPress");
         require(resource("keywheel.mixins.json").contains("\"MouseHandlerInvoker\""),
                 "mouse invoker must be registered");
+    }
+
+    private static void requireDeferredReplayLifecycle() throws Exception {
+        Class<?> executor = Class.forName("com.example.keywheel.input.ActionExecutor");
+        var policy = executor.getDeclaredMethod("shouldQueueReplay", boolean.class, boolean.class);
+        policy.setAccessible(true);
+        require((boolean) policy.invoke(null, true, true),
+                "supported wheel actions must be deferred for replay");
+        require(!(boolean) policy.invoke(null, false, true),
+                "unsupported keys must use the current fallback");
+        require(!(boolean) policy.invoke(null, true, false),
+                "wheel replay requires a ready client");
+        byte[] bytes = resourceBytes("com/example/keywheel/input/ActionExecutor.class");
+        require(containsBytes(bytes, "SyntheticInputReplayer".getBytes(StandardCharsets.UTF_8)),
+                "wheel actions must use the replayer");
+        require(containsBytes(bytes, "tell".getBytes(StandardCharsets.UTF_8)),
+                "wheel replay must run after the wheel closes");
     }
 
     @SuppressWarnings("unchecked")
