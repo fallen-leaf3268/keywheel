@@ -208,6 +208,7 @@ public class WheelScreen extends Screen {
     @Override
     public void onClose() {
         LongPressWatcher.STATE.reset();
+        LongPressWatcher.clearSkipReleaseUntil();
         WheelActionBridge.clearForceAllow();
         if (minecraft != null) {
             if (previousScreen != null) {
