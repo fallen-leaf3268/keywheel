@@ -15,11 +15,13 @@ import java.util.Set;
 public final class WheelConflictIndex {
     private static final Set<InputConstants.Key> CONFLICT_KEYS = new HashSet<>();
     private static boolean initialized = false;
+    private static boolean dirty = false;
 
     private WheelConflictIndex() {}
 
     public static boolean contains(InputConstants.Key k) {
         if (k == null || !PhysicalKeyState.isSupported(k.getType())) return false;
+        if (dirty) return CONFLICT_KEYS.contains(k);
         ensure();
         return CONFLICT_KEYS.contains(k);
     }
@@ -32,14 +34,26 @@ public final class WheelConflictIndex {
     public static void reset() {
         CONFLICT_KEYS.clear();
         initialized = false;
+        dirty = false;
         wheelKeysCache = Set.of();
         wheelKeysStamp = 0L;
+    }
+
+    public static void markDirty() {
+        dirty = true;
+    }
+
+    public static boolean flushDirty() {
+        if (!dirty) return false;
+        reset();
+        return true;
     }
 
     private static Set<InputConstants.Key> wheelKeysCache = Set.of();
     private static long wheelKeysStamp = 0L;
 
     public static Set<InputConstants.Key> wheelKeys() {
+        if (dirty) return wheelKeysCache;
         long now = System.currentTimeMillis();
         if (now - wheelKeysStamp < 2000L) {
             return wheelKeysCache;

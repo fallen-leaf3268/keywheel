@@ -41,6 +41,7 @@ public class LongPressWatcher {
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
 
+        WheelConflictIndex.flushDirty();
         ActionExecutor.flushSetDown();
 
         var mc = Minecraft.getInstance();

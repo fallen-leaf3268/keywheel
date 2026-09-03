@@ -52,6 +52,8 @@ public final class KeyWheelRegressionTest {
         require(!shouldDrawSeparators(1), "a single sector must render without a separator");
         require(shouldDrawSeparators(2), "multiple sectors must retain separators");
         requireWheelKeyCacheReset();
+        requireDeferredConflictCacheReset();
+        requireKeyRefreshPreservesMembers();
         requireMemberCacheInvalidation();
         requireSwapPrimaryPersistenceHelpers();
         requireCurrentConflictEligibility();
@@ -158,6 +160,46 @@ public final class KeyWheelRegressionTest {
         WheelConflictIndex.reset();
         require(((Set<?>) cache.get(null)).isEmpty(), "reset must clear the wheel key cache immediately");
         require(stamp.getLong(null) == 0L, "reset must clear the wheel key cache timestamp");
+    }
+
+    private static void requireDeferredConflictCacheReset() throws Exception {
+        var cache = WheelConflictIndex.class.getDeclaredField("wheelKeysCache");
+        var stamp = WheelConflictIndex.class.getDeclaredField("wheelKeysStamp");
+        cache.setAccessible(true);
+        stamp.setAccessible(true);
+        Set<InputConstants.Key> existing = Set.of(InputConstants.Type.KEYSYM.getOrCreate(72));
+        cache.set(null, existing);
+        stamp.setLong(null, 42L);
+
+        WheelConflictIndex.markDirty();
+        require(cache.get(null).equals(existing),
+                "marking key mappings dirty must preserve the last stable cache during a batch update");
+        require(stamp.getLong(null) == 42L,
+                "marking key mappings dirty must not rebuild the cache in an intermediate state");
+
+        require(WheelConflictIndex.flushDirty(),
+                "the stable phase must consume a pending conflict cache refresh");
+        require(((Set<?>) cache.get(null)).isEmpty(),
+                "flushing a dirty conflict cache must clear the stale wheel keys");
+        require(stamp.getLong(null) == 0L,
+                "flushing a dirty conflict cache must reset its timestamp");
+        require(!WheelConflictIndex.flushDirty(),
+                "a stable phase without key changes must not refresh the cache again");
+    }
+
+    private static void requireKeyRefreshPreservesMembers() throws Exception {
+        byte[] setKeyMixin = resourceBytes("com/example/keywheel/mixin/KeyMappingSetKeyMixin.class");
+        require(containsBytes(setKeyMixin, "markDirty".getBytes(StandardCharsets.UTF_8)),
+                "key changes must defer conflict cache rebuilding until a stable phase");
+        require(containsBytes(setKeyMixin, "flushDirty".getBytes(StandardCharsets.UTF_8)),
+                "mapping reset completion must flush a pending conflict cache refresh");
+        require(!containsBytes(setKeyMixin, "setMember".getBytes(StandardCharsets.UTF_8)),
+                "transient key refresh states must not remove persistent wheel members");
+        require(!containsBytes(setKeyMixin, "removeMismatchedSwapPrimary".getBytes(StandardCharsets.UTF_8)),
+                "transient key refresh states must not rewrite persistent swap-primary configuration");
+        require(containsBytes(resourceBytes("com/example/keywheel/input/LongPressWatcher.class"),
+                        "flushDirty".getBytes(StandardCharsets.UTF_8)),
+                "the client tick end must flush dirty state when mapping reset is not called");
     }
 
     private static void requireMemberCacheInvalidation() throws Exception {

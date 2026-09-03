@@ -20,7 +20,8 @@ public abstract class KeyboardHandlerMixin {
         if (action != 1 && action != 2) return;
         if (Minecraft.getInstance().screen != null) return;
         InputConstants.Key inputKey = InputConstants.getKey(key, scancode);
-        if (WheelConflictIndex.wheelKeys().contains(inputKey)) {
+        boolean wheelKey = WheelConflictIndex.wheelKeys().contains(inputKey);
+        if (wheelKey) {
             ci.cancel();
         }
     }
