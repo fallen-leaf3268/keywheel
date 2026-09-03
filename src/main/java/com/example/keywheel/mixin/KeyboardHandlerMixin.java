@@ -16,10 +16,10 @@ public abstract class KeyboardHandlerMixin {
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
     private void keywheel$onKeyPress(long window, int key, int scancode, int action, int mods, CallbackInfo ci) {
         if (SyntheticInputContext.isActive()) return;
+        InputConstants.Key inputKey = InputConstants.getKey(key, scancode);
         ActionExecutor.releaseHeldOnInput(action);
         if (action != 1 && action != 2) return;
         if (Minecraft.getInstance().screen != null) return;
-        InputConstants.Key inputKey = InputConstants.getKey(key, scancode);
         boolean wheelKey = WheelConflictIndex.wheelKeys().contains(inputKey);
         if (wheelKey) {
             ci.cancel();

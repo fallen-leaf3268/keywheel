@@ -173,16 +173,18 @@ public final class KeyWheelRegressionTest {
 
         WheelConflictIndex.markDirty();
         require(cache.get(null).equals(existing),
-                "marking key mappings dirty must preserve the last stable cache during a batch update");
-        require(stamp.getLong(null) == 42L,
-                "marking key mappings dirty must not rebuild the cache in an intermediate state");
+                "marking key mappings dirty must preserve the last stable cache until the next query");
+        require(WheelConflictIndex.wheelKeys().isEmpty(),
+                "the first query after a mapping change must not return stale wheel keys");
+        require(stamp.getLong(null) != 42L,
+                "a dirty query must invalidate the old wheel key timestamp");
 
-        require(WheelConflictIndex.flushDirty(),
-                "the stable phase must consume a pending conflict cache refresh");
+        require(!WheelConflictIndex.flushDirty(),
+                "the dirty query must consume the pending conflict cache refresh");
         require(((Set<?>) cache.get(null)).isEmpty(),
                 "flushing a dirty conflict cache must clear the stale wheel keys");
-        require(stamp.getLong(null) == 0L,
-                "flushing a dirty conflict cache must reset its timestamp");
+        require(stamp.getLong(null) != 42L,
+                "flushing a dirty conflict cache must not restore the stale timestamp");
         require(!WheelConflictIndex.flushDirty(),
                 "a stable phase without key changes must not refresh the cache again");
     }

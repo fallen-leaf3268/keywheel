@@ -13,6 +13,7 @@ public class KeyWheel {
     public static final String MODID = "keywheel";
     public static final Logger LOG = LogUtils.getLogger();
 
+
     public KeyWheel() {
         ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, KeyWheelConfig.SPEC);
         LOG.info("KeyWheel booted");

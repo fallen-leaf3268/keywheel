@@ -53,7 +53,9 @@ public final class WheelConflictIndex {
     private static long wheelKeysStamp = 0L;
 
     public static Set<InputConstants.Key> wheelKeys() {
-        if (dirty) return wheelKeysCache;
+        if (dirty) {
+            reset();
+        }
         long now = System.currentTimeMillis();
         if (now - wheelKeysStamp < 2000L) {
             return wheelKeysCache;
@@ -65,12 +67,22 @@ public final class WheelConflictIndex {
                 var mc = Minecraft.getInstance();
                 if (mc != null && mc.options != null && mc.options.keyMappings != null) {
                     Set<String> memberSet = new HashSet<>(members);
+                    Map<InputConstants.Key, Integer> counts = new HashMap<>();
+                    for (KeyMapping km : mc.options.keyMappings) {
+                        if (km.getCategory().equals("key.categories.keywheel")) continue;
+                        if (!PhysicalKeyState.isSupported(km.getKey().getType())) continue;
+                        counts.merge(km.getKey(), 1, Integer::sum);
+                    }
+                    CONFLICT_KEYS.clear();
+                    for (var entry : counts.entrySet()) {
+                        if (entry.getValue() >= 2) CONFLICT_KEYS.add(entry.getKey());
+                    }
                     for (KeyMapping km : mc.options.keyMappings) {
                         boolean member = memberSet.contains(km.getName());
                         if (!member) continue;
                         InputConstants.Key key = km.getKey();
                         boolean supported = PhysicalKeyState.isSupported(key.getType());
-                        if (supported && shouldIncludeWheelKey(member, contains(key))) keys.add(key);
+                        if (supported && shouldIncludeWheelKey(member, CONFLICT_KEYS.contains(key))) keys.add(key);
                     }
                 }
             }
