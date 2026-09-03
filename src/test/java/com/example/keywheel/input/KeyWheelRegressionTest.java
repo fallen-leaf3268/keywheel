@@ -338,12 +338,14 @@ public final class KeyWheelRegressionTest {
         Class<?> context = Class.forName("com.example.keywheel.input.SyntheticInputContext");
         var begin = context.getDeclaredMethod("begin", KeyMapping.class, InputConstants.Key.class);
         var active = context.getDeclaredMethod("isActive");
-        var allows = context.getDeclaredMethod("allows", KeyMapping.class);
+            var allows = context.getDeclaredMethod("allows", KeyMapping.class);
+            var targetAccessor = context.getDeclaredMethod("target");
         var shouldMask = context.getDeclaredMethod("shouldMask", KeyMapping.class, InputConstants.Key.class);
         AutoCloseable scope = (AutoCloseable) begin.invoke(null, target, target.getKey());
         try {
             require((boolean) active.invoke(null), "synthetic replay context must be active inside its scope");
             require((boolean) allows.invoke(null, target), "synthetic replay must allow its target");
+            require(targetAccessor.invoke(null) == target, "synthetic replay must expose its exact target mapping");
             require(!(boolean) allows.invoke(null, sameKey), "synthetic replay must isolate a same-key non-target");
             require((boolean) shouldMask.invoke(null, sameKey, sameKey.getKey()),
                     "same-key non-target key must be masked");
@@ -354,6 +356,7 @@ public final class KeyWheelRegressionTest {
         }
         require(!(boolean) active.invoke(null), "synthetic replay context must always clear");
         requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingClickMixin", "keywheel$maskSyntheticKey");
+        requireDeclaredMethod("com.example.keywheel.mixin.KeyMappingClickMixin", "keywheel$filterSyntheticClick");
     }
 
     private static void requireSyntheticInputReplayer() throws Exception {

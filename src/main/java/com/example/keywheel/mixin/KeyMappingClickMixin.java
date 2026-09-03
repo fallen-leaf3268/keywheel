@@ -14,6 +14,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(KeyMapping.class)
 public abstract class KeyMappingClickMixin {
+    @Inject(method = "click", at = @At("HEAD"), cancellable = true)
+    private static void keywheel$filterSyntheticClick(InputConstants.Key key, CallbackInfo ci) {
+        if (!SyntheticInputContext.isActive()) return;
+        KeyMapping target = SyntheticInputContext.target();
+        if (target == null || !target.getKey().equals(key)) {
+            ci.cancel();
+            return;
+        }
+        KeyMappingClickCountAccessor accessor = (KeyMappingClickCountAccessor) (Object) target;
+        accessor.keywheel$setClickCount(accessor.keywheel$getClickCount() + 1);
+        ci.cancel();
+    }
+
     @Inject(method = "setDown", at = @At("HEAD"), cancellable = true)
     private void keywheel$guardSetDown(boolean down, CallbackInfo ci) {
         KeyMapping mapping = (KeyMapping) (Object) this;

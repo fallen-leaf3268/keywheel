@@ -26,6 +26,11 @@ public final class SyntheticInputContext {
         return state == null || state.target() == mapping;
     }
 
+    public static KeyMapping target() {
+        State state = CURRENT.get();
+        return state == null ? null : state.target();
+    }
+
     public static boolean shouldMask(KeyMapping mapping, InputConstants.Key actualKey) {
         State state = CURRENT.get();
         return state != null
