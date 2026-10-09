@@ -12,10 +12,7 @@ public final class SyntheticInputReplayer {
     private SyntheticInputReplayer() {}
 
     public static boolean supports(InputConstants.Key key) {
-        return key != null
-                && !InputConstants.UNKNOWN.equals(key)
-                && (key.getType() == InputConstants.Type.KEYSYM
-                || key.getType() == InputConstants.Type.MOUSE);
+        return PhysicalKeyState.isSupported(key);
     }
 
     public static boolean replay(KeyMapping target, InputConstants.Key key, int action) {

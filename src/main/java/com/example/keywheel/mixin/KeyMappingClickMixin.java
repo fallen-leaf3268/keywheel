@@ -1,6 +1,7 @@
 package com.example.keywheel.mixin;
 
 import com.example.keywheel.config.KeyWheelConfig;
+import com.example.keywheel.input.ActionExecutor;
 import com.example.keywheel.input.SyntheticInputContext;
 import com.example.keywheel.input.WheelActionBridge;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -9,6 +10,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -30,6 +32,10 @@ public abstract class KeyMappingClickMixin {
     @Inject(method = "setDown", at = @At("HEAD"), cancellable = true)
     private void keywheel$guardSetDown(boolean down, CallbackInfo ci) {
         KeyMapping mapping = (KeyMapping) (Object) this;
+        if (!down && ActionExecutor.isHolding(mapping) && !SyntheticInputContext.isActive()) {
+            ci.cancel();
+            return;
+        }
         if (down && !SyntheticInputContext.allows(mapping)) {
             mapping.setDown(false);
             ci.cancel();
@@ -42,6 +48,16 @@ public abstract class KeyMappingClickMixin {
             mapping.setDown(false);
             ci.cancel();
         }
+    }
+
+    @Redirect(method = "isDown", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/KeyMapping;isConflictContextAndModifierActive()Z", remap = false))
+    private boolean keywheel$heldModifierActive(KeyMapping mapping) {
+        if (SyntheticInputContext.isActive()) {
+            return SyntheticInputContext.allows(mapping) && mapping.getKeyConflictContext().isActive();
+        }
+        if (ActionExecutor.isHolding(mapping)) return mapping.getKeyConflictContext().isActive();
+        return mapping.isConflictContextAndModifierActive();
     }
 
     @Inject(method = "matches", at = @At("HEAD"), cancellable = true)
@@ -59,7 +75,9 @@ public abstract class KeyMappingClickMixin {
     @Inject(method = "getKey", at = @At("RETURN"), cancellable = true, remap = false)
     private void keywheel$maskSyntheticKey(CallbackInfoReturnable<InputConstants.Key> cir) {
         KeyMapping mapping = (KeyMapping) (Object) this;
-        if (SyntheticInputContext.shouldMask(mapping, cir.getReturnValue())) {
+        if (SyntheticInputContext.isActive() && SyntheticInputContext.target() == mapping) {
+            cir.setReturnValue(SyntheticInputContext.key());
+        } else if (SyntheticInputContext.shouldMask(mapping, cir.getReturnValue())) {
             cir.setReturnValue(InputConstants.UNKNOWN);
         }
     }

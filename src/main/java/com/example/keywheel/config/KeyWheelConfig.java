@@ -18,6 +18,7 @@ public final class KeyWheelConfig {
     private static volatile Set<String> lockedIdsCache = Set.of();
     private static volatile List<String> lockedIdsSource;
     private static volatile List<String> lockedMembersSource;
+    private static volatile List<String> lockedBannedSource;
 
     private KeyWheelConfig() {}
 
@@ -83,7 +84,11 @@ public final class KeyWheelConfig {
     }
 
     public static boolean isMember(String kmName) {
-        return kmName != null && MEMBERS.get().contains(kmName);
+        return kmName != null && !isBanned(kmName) && MEMBERS.get().contains(kmName);
+    }
+
+    public static List<String> currentMembers() {
+        return retainedAllowedMembers(MEMBERS.get(), BANNED.get());
     }
 
     public static boolean isSwapMode(String physicalKeyId) {
@@ -138,39 +143,16 @@ public final class KeyWheelConfig {
         return null;
     }
 
-    public static void removeMismatchedSwapPrimary(String mappingId, String currentPhysicalKeyId) {
-        List<String> current = SWAP_PRIMARY_TARGETS.get();
-        List<String> updated = removeMismatchedSwapPrimaryEntries(
-                current, mappingId, currentPhysicalKeyId);
-        if (!updated.equals(current)) {
-            SWAP_PRIMARY_TARGETS.set(updated);
-            SWAP_PRIMARY_TARGETS.save();
-        }
-    }
-
-    static List<String> removeMismatchedSwapPrimaryEntries(
-            List<String> entries, String mappingId, String currentPhysicalKeyId) {
-        List<String> out = new ArrayList<>();
-        if (entries == null) return out;
-        for (String entry : entries) {
-            int separator = entry == null ? -1 : entry.indexOf(SWAP_PRIMARY_SEPARATOR);
-            if (separator <= 0 || separator == entry.length() - 1) continue;
-            String physicalKeyId = entry.substring(0, separator);
-            String storedMappingId = entry.substring(separator + 1);
-            if (storedMappingId.equals(mappingId) && !physicalKeyId.equals(currentPhysicalKeyId)) continue;
-            out.add(entry);
-        }
-        return out;
-    }
-
     public static void setMember(String kmName, boolean enabled) {
         replaceMembers(updatedMembership(MEMBERS.get(), kmName, enabled));
     }
 
     public static void replaceMembers(List<String> members) {
-        List<String> normalizedMembers = updatedMembership(members, null, false);
-        MEMBERS.set(normalizedMembers);
-        MEMBERS.save();
+        List<String> normalizedMembers = retainedAllowedMembers(members, BANNED.get());
+        if (!normalizedMembers.equals(MEMBERS.get())) {
+            MEMBERS.set(normalizedMembers);
+            MEMBERS.save();
+        }
         replaceLocked(retainedLockedMembers(LOCKED.get(), normalizedMembers));
         replaceHeld(retainedHeldMembers(HOLD_ENABLED.get(), normalizedMembers));
         invalidateRuntimeCaches();
@@ -192,6 +174,17 @@ public final class KeyWheelConfig {
         return new ArrayList<>(out);
     }
 
+    static List<String> retainedAllowedMembers(List<String> members, List<String> banned) {
+        Set<String> bannedIds = banned == null ? Set.of() : new LinkedHashSet<>(banned);
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (members != null) {
+            for (String id : members) {
+                if (id != null && !bannedIds.contains(id)) out.add(id);
+            }
+        }
+        return new ArrayList<>(out);
+    }
+
     public static void setBanned(String kmName, boolean banned) {
         List<String> list = new ArrayList<>(BANNED.get());
         if (banned && !list.contains(kmName)) list.add(kmName);
@@ -199,8 +192,10 @@ public final class KeyWheelConfig {
         BANNED.set(list);
         BANNED.save();
         if (banned) {
-            setLocked(kmName, false);
-            setHoldEnabled(kmName, false);
+            setMember(kmName, false);
+        } else {
+            invalidateRuntimeCaches();
+            invalidateLockedCache();
         }
     }
 
@@ -212,7 +207,7 @@ public final class KeyWheelConfig {
         if (kmName == null) return;
         List<String> list = updatedMembership(LOCKED.get(), kmName,
                 locked && isMember(kmName));
-        replaceLocked(retainedLockedMembers(list, MEMBERS.get()));
+        replaceLocked(retainedLockedMembers(list, currentMembers()));
         if (locked && isLocked(kmName)) clearMappingState(kmName);
     }
 
@@ -235,7 +230,7 @@ public final class KeyWheelConfig {
         if (kmName == null) return;
         List<String> updated = updatedMembership(HOLD_ENABLED.get(), kmName,
                 enabled && isMember(kmName));
-        replaceHeld(retainedHeldMembers(updated, MEMBERS.get()));
+        replaceHeld(retainedHeldMembers(updated, currentMembers()));
         if (!enabled) clearHeldMappingState(kmName);
     }
 
@@ -254,6 +249,7 @@ public final class KeyWheelConfig {
         synchronized (KeyWheelConfig.class) {
             lockedIdsSource = null;
             lockedMembersSource = null;
+            lockedBannedSource = null;
             lockedIdsCache = Set.of();
         }
     }
@@ -261,12 +257,15 @@ public final class KeyWheelConfig {
     private static Set<String> lockedIds() {
         List<String> locked = LOCKED.get();
         List<String> members = MEMBERS.get();
-        if (locked != lockedIdsSource || members != lockedMembersSource) {
+        List<String> banned = BANNED.get();
+        if (locked != lockedIdsSource || members != lockedMembersSource || banned != lockedBannedSource) {
             synchronized (KeyWheelConfig.class) {
-                if (locked != lockedIdsSource || members != lockedMembersSource) {
-                    lockedIdsCache = Set.copyOf(retainedLockedMembers(locked, members));
+                if (locked != lockedIdsSource || members != lockedMembersSource || banned != lockedBannedSource) {
+                    lockedIdsCache = Set.copyOf(retainedLockedMembers(locked,
+                            retainedAllowedMembers(members, banned)));
                     lockedIdsSource = locked;
                     lockedMembersSource = members;
+                    lockedBannedSource = banned;
                 }
             }
         }

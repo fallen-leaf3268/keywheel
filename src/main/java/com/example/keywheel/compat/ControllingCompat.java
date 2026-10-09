@@ -46,7 +46,8 @@ public class ControllingCompat {
                     Object entry = getEntry.invoke(event);
                     KeyMapping key = getKey(entry);
                     if (key == null) return;
-                    if (!WheelConflictIndex.contains(key.getKey()) || key.isUnbound()) return;
+                    if (KeyWheelConfig.isBanned(key.getName())
+                            || !WheelConflictIndex.contains(key.getKey()) || key.isUnbound()) return;
                     WheelToggleWidget w = getWidget(key);
                     w.setX((int) getX.invoke(event) + 75);
                     w.setY((int) getY.invoke(event) + 5);
@@ -72,7 +73,8 @@ public class ControllingCompat {
                     Object entry = lGetEntry.invoke(event);
                     KeyMapping key = getKey(entry);
                     if (key == null) return;
-                    if (!WheelConflictIndex.contains(key.getKey()) || key.isUnbound()) return;
+                    if (KeyWheelConfig.isBanned(key.getName())
+                            || !WheelConflictIndex.contains(key.getKey()) || key.isUnbound()) return;
                     ((List) lGetListeners.invoke(event)).add(getWidget(key));
                 } catch (Exception e) {
                     if (!listenerFailureLogged) {

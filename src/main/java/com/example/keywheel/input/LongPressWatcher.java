@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,9 +24,12 @@ public class LongPressWatcher {
     private static boolean suppressUntilRelease = false;
     private static Screen previousScreen = null;
     private static InputConstants.Key skipReleaseUntil = null;
+    private static final WheelInputTracker INPUTS = new WheelInputTracker();
+    private static final Set<InputConstants.Key> ignoredUntilRelease = new HashSet<>();
 
     public static void suppressUntilRelease() {
         suppressUntilRelease = true;
+        cancelInputs();
     }
 
     public static void invalidateMemberCache() {
@@ -35,6 +39,38 @@ public class LongPressWatcher {
 
     public static void clearSkipReleaseUntil() {
         skipReleaseUntil = null;
+    }
+
+    public static boolean recordPhysicalInput(InputConstants.Key key, int action) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null) {
+            cancelInputs();
+            previousScreen = mc.screen;
+            if (action == GLFW.GLFW_PRESS && WheelConflictIndex.wheelKeys().contains(key)) {
+                ignoredUntilRelease.add(key);
+                skipReleaseUntil = key;
+            }
+        }
+        if (action == GLFW.GLFW_RELEASE) {
+            INPUTS.release(key);
+            ignoredUntilRelease.remove(key);
+            if (key.equals(skipReleaseUntil)) skipReleaseUntil = null;
+            if (suppressUntilRelease
+                    && pickFirstWheelKeyPressed(mc, WheelConflictIndex.wheelKeys()) == null) {
+                suppressUntilRelease = false;
+            }
+            return false;
+        }
+        if (mc.screen != null || mc.player == null || !PhysicalKeyState.isSupported(key)
+                || !WheelConflictIndex.wheelKeys().contains(key)) return false;
+        if (action != GLFW.GLFW_PRESS && action != GLFW.GLFW_REPEAT) return false;
+        if (suppressUntilRelease || ignoredUntilRelease.contains(key)
+                || key.equals(skipReleaseUntil)) return true;
+        if (action == GLFW.GLFW_PRESS) {
+            HeldKeyState state = INPUTS.press(key);
+            if (state != null) categorizeMappings(state, key);
+        }
+        return true;
     }
 
     @SubscribeEvent
@@ -48,7 +84,10 @@ public class LongPressWatcher {
         Screen currentScreen = mc.screen;
         if (mc.player == null) {
             ActionExecutor.releaseHeld();
-            STATE.reset();
+            cancelInputs();
+            ignoredUntilRelease.clear();
+            skipReleaseUntil = null;
+            suppressUntilRelease = false;
             previousScreen = currentScreen;
             return;
         }
@@ -57,6 +96,7 @@ public class LongPressWatcher {
         Set<InputConstants.Key> wheelKeys = WheelConflictIndex.wheelKeys();
 
         if (currentScreen instanceof WheelScreen ws) {
+            cancelInputs();
             if (ws.tickSelectOnRelease()) {
                 ws.onClose();
             }
@@ -65,12 +105,13 @@ public class LongPressWatcher {
         }
 
         if (currentScreen != null) {
+            cancelInputs();
             previousScreen = currentScreen;
             return;
         }
 
         if (wheelKeys.isEmpty()) {
-            STATE.reset();
+            cancelInputs();
             previousScreen = currentScreen;
             return;
         }
@@ -79,68 +120,62 @@ public class LongPressWatcher {
             if (pickFirstWheelKeyPressed(mc, wheelKeys) == null) {
                 suppressUntilRelease = false;
             }
-            STATE.reset();
+            cancelInputs();
             previousScreen = currentScreen;
             return;
         }
 
-        InputConstants.Key pressedKey = pickFirstWheelKeyPressed(mc, wheelKeys);
-        boolean justClosedScreen = previousScreen != null;
-
-        if (pressedKey == null) {
-            if (STATE.isActive()) {
-                if (STATE.thresholdReached) {
-                } else if (skipReleaseUntil != null
-                        && STATE.physicalKey != null
-                        && STATE.physicalKey.equals(skipReleaseUntil)) {
-                } else if (!STATE.nonMemberTargets.isEmpty()) {
-                    KeyMapping primary = consumePrimary(STATE.nonMemberTargets, STATE.physicalKey);
-                    if (primary != null) {
-                        ActionExecutor.run(primary);
-                    }
+        long window = mc.getWindow().getWindow();
+        ignoredUntilRelease.removeIf(key -> !PhysicalKeyState.isPressed(window, key));
+        if (skipReleaseUntil != null && !PhysicalKeyState.isPressed(window, skipReleaseUntil)) {
+            skipReleaseUntil = null;
+        }
+        if (previousScreen != null) {
+            Set<InputConstants.Key> recorded = INPUTS.pressedKeys();
+            for (InputConstants.Key key : wheelKeys) {
+                if (!recorded.contains(key) && PhysicalKeyState.isPressed(window, key)) {
+                    ignoredUntilRelease.add(key);
                 }
             }
-            skipReleaseUntil = null;
-            STATE.reset();
-            previousScreen = currentScreen;
-            return;
         }
-
-        if (justClosedScreen) {
-            InputConstants.Key realPressed = pickFirstWheelKeyPressed(mc, wheelKeys);
-            if (realPressed != null) {
-                skipReleaseUntil = realPressed;
-            }
-            STATE.reset();
-            previousScreen = currentScreen;
-            return;
+        previousScreen = null;
+        for (HeldKeyState state : INPUTS.heldStates()) {
+            if (!wheelKeys.contains(state.physicalKey)) INPUTS.discard(state.physicalKey);
+            else if (!PhysicalKeyState.isPressed(window, state.physicalKey)) INPUTS.release(state.physicalKey);
         }
-
-        if (skipReleaseUntil != null && pressedKey.equals(skipReleaseUntil)) {
-            previousScreen = currentScreen;
-            return;
-        }
-        if (skipReleaseUntil != null && !pressedKey.equals(skipReleaseUntil)) {
-            skipReleaseUntil = null;
-        }
-
-        if (!pressedKey.equals(STATE.physicalKey)) {
-            STATE.physicalKey = pressedKey;
-            STATE.ticksHeld = 0;
-            STATE.thresholdReached = false;
-            categorizeMappings(pressedKey);
-        }
-
-        STATE.ticksHeld++;
-
-        if (STATE.ticksHeld == threshold && !STATE.thresholdReached) {
-            STATE.thresholdReached = true;
-            if (!STATE.memberTargets.isEmpty()) {
-                openWheelFor(mc, STATE.memberTargets);
+        for (HeldKeyState state : INPUTS.drainReleased()) {
+            if (state.thresholdReached || !wheelKeys.contains(state.physicalKey)
+                    || ignoredUntilRelease.contains(state.physicalKey)) continue;
+            KeyMapping primary = consumePrimary(state.nonMemberTargets, state.physicalKey);
+            if (primary != null && primary.getKey().equals(state.physicalKey)) ActionExecutor.run(primary);
+            if (mc.screen != null) {
+                cancelInputs();
+                previousScreen = mc.screen;
+                return;
             }
         }
+        List<HeldKeyState> heldStates = INPUTS.heldStates();
+        for (HeldKeyState state : heldStates) {
+            state.ticksHeld++;
+            if (state.ticksHeld >= threshold && !state.thresholdReached) {
+                state.thresholdReached = true;
+                if (!state.memberTargets.isEmpty()) {
+                    STATE.copyFrom(state);
+                    openWheelFor(mc, state.memberTargets);
+                    ignoredUntilRelease.addAll(INPUTS.pressedKeys());
+                    INPUTS.cancel();
+                    previousScreen = mc.screen;
+                    return;
+                }
+            }
+        }
+        STATE.copyFrom(heldStates.isEmpty() ? null : heldStates.get(0));
+    }
 
-        previousScreen = currentScreen;
+    private static void cancelInputs() {
+        ignoredUntilRelease.addAll(INPUTS.pressedKeys());
+        INPUTS.cancel();
+        STATE.reset();
     }
 
     private static KeyMapping consumePrimary(List<KeyMapping> nonMembers, InputConstants.Key physicalKey) {
@@ -172,9 +207,9 @@ public class LongPressWatcher {
         return null;
     }
 
-    private static void categorizeMappings(InputConstants.Key key) {
-        STATE.memberTargets.clear();
-        STATE.nonMemberTargets.clear();
+    private static void categorizeMappings(HeldKeyState state, InputConstants.Key key) {
+        state.memberTargets.clear();
+        state.nonMemberTargets.clear();
 
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.options == null) return;
@@ -185,9 +220,9 @@ public class LongPressWatcher {
         for (KeyMapping km : mc.options.keyMappings) {
             if (km.getKey().equals(key)) {
                 if (enabledSet.contains(km.getName())) {
-                    STATE.memberTargets.add(km);
+                    state.memberTargets.add(km);
                 } else {
-                    STATE.nonMemberTargets.add(km);
+                    state.nonMemberTargets.add(km);
                 }
             }
         }
@@ -204,7 +239,7 @@ public class LongPressWatcher {
             return cachedIds;
         }
         List<String> out = new ArrayList<>();
-        List<String> stored = KeyWheelConfig.MEMBERS.get();
+        List<String> stored = KeyWheelConfig.currentMembers();
         if (stored != null) {
             for (String id : stored) {
                 if (id != null) out.add(id);

@@ -9,10 +9,31 @@ import net.minecraftforge.client.settings.KeyMappingLookup;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.util.List;
 
 @Mixin(value = KeyMappingLookup.class, remap = false)
 public abstract class KeyMappingLookupMixin {
+    @Inject(method = "getAll(Lcom/mojang/blaze3d/platform/InputConstants$Key;)Ljava/util/List;",
+            at = @At("HEAD"), cancellable = true, remap = false)
+    private void keywheel$selectSyntheticMappings(InputConstants.Key key,
+                                                  CallbackInfoReturnable<List<KeyMapping>> cir) {
+        if (!SyntheticInputContext.isActive()) return;
+        cir.setReturnValue(SyntheticInputContext.key().equals(key)
+                ? List.of(SyntheticInputContext.target()) : List.of());
+    }
+
+    @Inject(method = "get(Lcom/mojang/blaze3d/platform/InputConstants$Key;)Lnet/minecraft/client/KeyMapping;",
+            at = @At("HEAD"), cancellable = true, remap = false)
+    private void keywheel$selectSyntheticMapping(InputConstants.Key key,
+                                                 CallbackInfoReturnable<KeyMapping> cir) {
+        if (!SyntheticInputContext.isActive()) return;
+        cir.setReturnValue(SyntheticInputContext.key().equals(key) ? SyntheticInputContext.target() : null);
+    }
+
     @Redirect(
             method = {
                     "getAll(Lcom/mojang/blaze3d/platform/InputConstants$Key;)Ljava/util/List;",

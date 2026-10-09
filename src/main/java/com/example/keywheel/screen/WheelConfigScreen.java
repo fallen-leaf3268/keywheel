@@ -36,10 +36,6 @@ public class WheelConfigScreen extends Screen {
     private static final int NAV_H = CELL;
     private static final int SEARCH_H = 20;
     private static final float OUTER_R = 96f;
-    private static final float INNER_R = OUTER_R * 0.2f;
-    private static final double DEAD = 24;
-
-    private final InputConstants.Key physicalKey;
     private final List<KeyMapping> allMappings = new ArrayList<>();
     private final List<Item> allItems = new ArrayList<>();
     private final Set<String> memberIds = new HashSet<>();
@@ -52,11 +48,15 @@ public class WheelConfigScreen extends Screen {
     private int page = 0;
     private String selected = null;
     private EditBox searchBox;
+    private String searchText = "";
+    private ConfigLayout layout;
+    private int nonWheelOffset = 0;
+    private int nonWheelCount = 0;
+    private MemberListViewport nonWheelViewport;
     private int hoveredConfigSector = -1;
 
     public WheelConfigScreen(InputConstants.Key physicalKey) {
         super(Component.translatable("key.keywheel.config_title"));
-        this.physicalKey = physicalKey;
         Minecraft mc = Minecraft.getInstance();
         if (mc != null && mc.options != null) for (KeyMapping km : mc.options.keyMappings) if (km.getKey().equals(physicalKey)) allMappings.add(km);
         for (Item item : BuiltInRegistries.ITEM) {
@@ -72,11 +72,28 @@ public class WheelConfigScreen extends Screen {
         refreshConfigCache();
     }
 
-    private int panelX() { return width - COLS * CELL - MARGIN * 2; }
-    private int panelW() { return COLS * CELL + MARGIN * 2; }
+    private int panelX() { return layout.panelX(); }
+    private int columns() { return layout.columns(); }
+    private int panelW() { return columns() * CELL + MARGIN * 2; }
     private int rows() { return Math.max(4, (height - 100) / CELL); }
-    private int totalPages() { return Math.max(1, (filteredItems.size() + COLS * rows() - 1) / (COLS * rows())); }
-    private int countPerPage() { return COLS * rows(); }
+    private int totalPages() { return Math.max(1, (filteredItems.size() + countPerPage() - 1) / countPerPage()); }
+    private int countPerPage() { return columns() * rows(); }
+
+    static ConfigLayout layoutForSize(int screenWidth, int screenHeight) {
+        int sidebarRight = screenWidth >= 552 ? 172 : 122;
+        int columns = Math.min(COLS, Math.max(3, 3 + (screenWidth - 320) / 36));
+        int panelX = screenWidth - columns * CELL - MARGIN * 2;
+        double centerX = (sidebarRight + panelX) / 2.0;
+        double radius = Math.min(OUTER_R,
+                Math.min((panelX - sidebarRight) / 2.0 - MARGIN, (screenHeight - 72) / 2.0));
+        return new ConfigLayout(columns, panelX, sidebarRight, centerX, radius);
+    }
+
+    record ConfigLayout(int columns, int panelX, int sidebarRight, double centerX, double outerRadius) {}
+
+    record MemberListViewport(int top, int bottom, int rows) {}
+
+    private int maximumNonWheelOffset() { return Math.max(0, nonWheelCount - nonWheelViewport.rows()); }
 
     private boolean isInWheel(KeyMapping km) {
         return memberIds.contains(km.getName());
@@ -87,23 +104,9 @@ public class WheelConfigScreen extends Screen {
     }
 
     private void refreshConfigCache() {
-        List<String> members = KeyWheelConfig.MEMBERS.get();
+        List<String> members = KeyWheelConfig.currentMembers();
         bannedIds.clear();
         for (String id : KeyWheelConfig.BANNED.get()) if (id != null) bannedIds.add(id);
-
-        List<String> sanitized = new ArrayList<>();
-        boolean changed = false;
-        for (String id : members) {
-            if (id != null && bannedIds.contains(id)) {
-                changed = true;
-            } else {
-                sanitized.add(id);
-            }
-        }
-        if (changed) {
-            KeyWheelConfig.replaceMembers(sanitized);
-            members = sanitized;
-        }
 
         memberIds.clear();
         for (String id : members) if (id != null) memberIds.add(id);
@@ -118,6 +121,8 @@ public class WheelConfigScreen extends Screen {
 
     @Override
     protected void init() {
+        layout = layoutForSize(width, height);
+        filterItems();
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose()).bounds(width / 2 - 100, height - 26, 200, 20).build());
 
         if (selected != null) {
@@ -150,24 +155,53 @@ public class WheelConfigScreen extends Screen {
             addRenderableWidget(Button.builder(Component.literal(">"), b -> { if (page < totalPages() - 1) { page++; rebuildWidgets(); } }).bounds(pl + pw - MARGIN - CELL, navY, CELL, NAV_H).build());
             int srY = 44 + rows() * CELL + MARGIN;
             searchBox = new EditBox(font, pl + MARGIN, srY, pw - MARGIN * 2, SEARCH_H, Component.empty());
-            searchBox.setMaxLength(128); searchBox.setResponder(s -> { page = 0; filterItems(); });
+            searchBox.setMaxLength(128);
+            searchBox.setValue(searchText);
+            searchBox.setResponder(s -> { searchText = s; page = 0; filterItems(); });
             addRenderableWidget(searchBox);
         }
 
         List<KeyMapping> nonWheel = new ArrayList<>();
         for (KeyMapping km : allMappings) if (!isInWheel(km)) nonWheel.add(km);
-        int by = height - 30 - nonWheel.size() * 20;
-        for (int i = 0; i < nonWheel.size(); i++) {
+        int top = selected == null ? 44 : memberIds.contains(selected) ? 146 : 80;
+        int bottom = height - 32;
+        nonWheelCount = nonWheel.size();
+        int visibleRows = Math.max(1, (bottom - top) / 20);
+        boolean scrollable = nonWheelCount > visibleRows;
+        if (scrollable) visibleRows = Math.max(1, visibleRows - 1);
+        nonWheelViewport = new MemberListViewport(top, bottom, visibleRows);
+        nonWheelOffset = Math.min(nonWheelOffset, maximumNonWheelOffset());
+        if (scrollable) {
+            Button up = Button.builder(Component.literal("<"), b -> {
+                nonWheelOffset = Math.max(0, nonWheelOffset - nonWheelViewport.rows());
+                rebuildWidgets();
+            }).bounds(10, top, 18, 18).build();
+            up.active = nonWheelOffset > 0;
+            addRenderableWidget(up);
+            Button down = Button.builder(Component.literal(">"), b -> {
+                nonWheelOffset = Math.min(maximumNonWheelOffset(), nonWheelOffset + nonWheelViewport.rows());
+                rebuildWidgets();
+            }).bounds(layout.sidebarRight() - 18, top, 18, 18).build();
+            down.active = nonWheelOffset < maximumNonWheelOffset();
+            addRenderableWidget(down);
+        }
+        int by = top + (scrollable ? 20 : 0);
+        int end = Math.min(nonWheelCount, nonWheelOffset + nonWheelViewport.rows());
+        for (int i = nonWheelOffset; i < end; i++) {
             KeyMapping nkm = nonWheel.get(i);
+            int rowY = by + (i - nonWheelOffset) * 20;
             String bl = net.minecraft.client.resources.language.I18n.get(nkm.getName());
-            if (bl.length() > 12) bl = bl.substring(0, 11) + "..";
+            int labelWidth = layout.sidebarRight() - 42;
+            if (font.width(bl) > labelWidth) {
+                bl = font.plainSubstrByWidth(bl, labelWidth - font.width("..")) + "..";
+            }
             boolean fnIb = bannedIds.contains(nkm.getName());
             final boolean fIb = fnIb;
             addRenderableWidget(Button.builder(Component.literal(fIb ? "🚫" : "☐"), b -> {
                 KeyWheelConfig.setBanned(nkm.getName(), !fIb);
                 refreshConfigCache();
                 rebuildWidgets();
-            }).bounds(10, by + i * 20, 22, 18)
+            }).bounds(10, rowY, 22, 18)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable(
                     fIb ? "key.keywheel.tooltip_lock" : "key.keywheel.tooltip_unlock")))
             .build());
@@ -176,7 +210,7 @@ public class WheelConfigScreen extends Screen {
                 KeyWheelConfig.setMember(nkm.getName(), true);
                 refreshConfigCache();
                 rebuildWidgets();
-            }).bounds(34, by + i * 20, 138, 18)
+            }).bounds(34, rowY, layout.sidebarRight() - 34, 18)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable(
                     fIb ? "key.keywheel.tooltip_unlock_then_add" : "key.keywheel.tooltip_add_to_wheel")))
             .build());
@@ -184,18 +218,29 @@ public class WheelConfigScreen extends Screen {
     }
 
     private void filterItems() {
-        String text = searchBox != null ? searchBox.getValue() : "";
         filteredItems.clear();
-        if (text.isEmpty()) { filteredItems.addAll(allItems); return; }
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (Item item : allItems) {
-            if (itemSearchText.get(item).contains(lower)) filteredItems.add(item);
+        if (searchText.isEmpty()) {
+            filteredItems.addAll(allItems);
+        } else {
+            String lower = searchText.toLowerCase(Locale.ROOT);
+            for (Item item : allItems) {
+                if (itemSearchText.get(item).contains(lower)) filteredItems.add(item);
+            }
         }
         if (page >= totalPages()) page = totalPages() - 1;
     }
 
     @Override public boolean mouseScrolled(double mx, double my, double delta) {
-        if (selected != null) {
+        if (nonWheelCount > 0 && mx >= 10 && mx < layout.sidebarRight()
+                && my >= nonWheelViewport.top() && my < nonWheelViewport.bottom()) {
+            int previous = nonWheelOffset;
+            if (delta < 0) nonWheelOffset = Math.min(maximumNonWheelOffset(), nonWheelOffset + 1);
+            else if (delta > 0) nonWheelOffset = Math.max(0, nonWheelOffset - 1);
+            if (previous != nonWheelOffset) rebuildWidgets();
+            return true;
+        }
+        if (selected != null && mx >= panelX() && mx < width
+                && my >= 24 && my < 44 + rows() * CELL + MARGIN + SEARCH_H) {
             if (delta < 0 && page < totalPages() - 1) page++; else if (delta > 0 && page > 0) page--;
             rebuildWidgets(); return true;
         }
@@ -203,18 +248,18 @@ public class WheelConfigScreen extends Screen {
     }
 
     @Override public boolean mouseClicked(double mx, double my, int button) {
-        double cx = width / 2.0, cy = height / 2.0;
+        double cx = layout.centerX(), cy = height / 2.0;
+        double outerRadius = layout.outerRadius(), innerRadius = outerRadius * 0.2;
         List<KeyMapping> members = wheelMembers();
         int n = members.size();
         if (n > 0) {
             double dist = Math.sqrt((mx-cx)*(mx-cx) + (my-cy)*(my-cy));
-            int index = WheelGeometry.indexFromMouse(mx, my, cx, cy, n, DEAD, OUTER_R);
-            if (dist >= INNER_R && dist <= OUTER_R && index >= 0 && index < n) {
+            int index = WheelGeometry.indexFromMouse(mx, my, cx, cy, n, outerRadius * 0.25, outerRadius);
+            if (dist >= innerRadius && dist <= outerRadius && index >= 0 && index < n) {
                 String nm = members.get(index).getName();
                 if (shouldSelectSector(button) && !nm.equals(selected)) {
                     selected = nm;
                     page = 0;
-                    filteredItems = new ArrayList<>(allItems);
                     rebuildWidgets();
                 }
                 if (shouldSelectSector(button)) return true;
@@ -223,8 +268,8 @@ public class WheelConfigScreen extends Screen {
         if (selected != null && button == 0) {
             int pl = panelX(), gy = 44, r = rows(), start = page * countPerPage();
             for (int row = 0; row < r; row++) {
-                for (int col = 0; col < COLS; col++) {
-                    int idx = start + row * COLS + col;
+                for (int col = 0; col < columns(); col++) {
+                    int idx = start + row * columns() + col;
                     if (idx >= filteredItems.size()) break;
                     int x = pl + MARGIN + col * CELL, y = gy + row * CELL;
                     if (mx >= x && mx < x + CELL && my >= y && my < y + CELL) {
@@ -250,6 +295,12 @@ public class WheelConfigScreen extends Screen {
             r.render(gg, mx, my, p);
         }
         gg.drawCenteredString(font, Component.translatable("key.keywheel.config_title"), width / 2, 8, 0xFFFFFFFF);
+        if (nonWheelCount > nonWheelViewport.rows()) {
+            String range = (nonWheelOffset + 1) + "-"
+                    + Math.min(nonWheelCount, nonWheelOffset + nonWheelViewport.rows()) + "/" + nonWheelCount;
+            gg.drawCenteredString(font, range, (10 + layout.sidebarRight()) / 2,
+                    nonWheelViewport.top() + 5, 0xFFFFFFFF);
+        }
         if (selected != null) {
             String label = net.minecraft.client.resources.language.I18n.get(selected);
             if (label.length() > 16) label = label.substring(0, 15) + "..";
@@ -257,14 +308,17 @@ public class WheelConfigScreen extends Screen {
         }
         List<KeyMapping> members = wheelMembers();
         int n = members.size();
-        double cx = width / 2.0, cy = height / 2.0;
-        hoveredConfigSector = (n > 0) ? WheelGeometry.indexFromMouse(mx, my, cx, cy, n, DEAD, OUTER_R) : -1;
+        double cx = layout.centerX(), cy = height / 2.0;
+        double outerRadius = layout.outerRadius(), innerRadius = outerRadius * 0.2;
+        hoveredConfigSector = (n > 0) ? WheelGeometry.indexFromMouse(mx, my, cx, cy, n,
+                outerRadius * 0.25, outerRadius) : -1;
         if (n > 0) {
             double dist = Math.sqrt((mx-cx)*(mx-cx) + (my-cy)*(my-cy));
-            WheelRenderer.drawWheelSectors(gg, cx, cy, OUTER_R, INNER_R, n, hoveredConfigSector, DEAD, dist);
+            WheelRenderer.drawWheelSectors(gg, cx, cy, outerRadius, innerRadius, n,
+                    hoveredConfigSector, outerRadius * 0.25, dist);
             if (hoveredConfigSector >= 0) {
                 gg.drawCenteredString(font, net.minecraft.client.resources.language.I18n.get(members.get(hoveredConfigSector).getName()),
-                        (int)cx, (int)(cy - OUTER_R - 14), 0xFFEEEEEE);
+                        (int)cx, (int)(cy - outerRadius - 14), 0xFFEEEEEE);
             }
             for (int i = 0; i < n; i++) {
                 KeyMapping km = members.get(i);
@@ -272,7 +326,7 @@ public class WheelConfigScreen extends Screen {
                 if (icon != null && !icon.isEmpty()) {
                     float sa = WheelGeometry.sectorStartAngle(i, n), arc = WheelGeometry.sectorArc(n);
                     float mid = sa + arc / 2f;
-                    double rad = Math.toRadians(mid), midR = (OUTER_R + INNER_R) / 2;
+                    double rad = Math.toRadians(mid), midR = (outerRadius + innerRadius) / 2;
                     gg.renderFakeItem(icon, (int)(cx + Math.cos(rad)*midR - 8), (int)(cy + Math.sin(rad)*midR - 8));
                 }
             }
@@ -287,8 +341,8 @@ public class WheelConfigScreen extends Screen {
             gg.drawString(font, pi, pl + (pw - piw) / 2, navCY, 0xFFFFFFFF);
             int s = page * countPerPage();
             for (int row = 0; row < r; row++)
-                for (int col = 0; col < COLS; col++) {
-                    int idx = s + row * COLS + col; if (idx >= filteredItems.size()) break;
+                for (int col = 0; col < columns(); col++) {
+                    int idx = s + row * columns() + col; if (idx >= filteredItems.size()) break;
                     int x = pl + MARGIN + col * CELL, y = gy + row * CELL;
                     ItemStack stack = itemStacks.get(filteredItems.get(idx));
                     if (mx >= x && mx < x + CELL && my >= y && my < y + CELL) { gg.fill(x, y, x + CELL, y + CELL, 0x80FFFFFF); gg.renderTooltip(font, stack, mx, my); }

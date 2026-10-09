@@ -20,7 +20,7 @@ public final class WheelConflictIndex {
     private WheelConflictIndex() {}
 
     public static boolean contains(InputConstants.Key k) {
-        if (k == null || !PhysicalKeyState.isSupported(k.getType())) return false;
+        if (!PhysicalKeyState.isSupported(k)) return false;
         if (dirty) return CONFLICT_KEYS.contains(k);
         ensure();
         return CONFLICT_KEYS.contains(k);
@@ -61,32 +61,21 @@ public final class WheelConflictIndex {
             return wheelKeysCache;
         }
         Set<InputConstants.Key> keys = new HashSet<>();
-        try {
-            List<String> members = KeyWheelConfig.MEMBERS.get();
-            if (members != null && !members.isEmpty()) {
-                var mc = Minecraft.getInstance();
-                if (mc != null && mc.options != null && mc.options.keyMappings != null) {
-                    Set<String> memberSet = new HashSet<>(members);
-                    Map<InputConstants.Key, Integer> counts = new HashMap<>();
-                    for (KeyMapping km : mc.options.keyMappings) {
-                        if (km.getCategory().equals("key.categories.keywheel")) continue;
-                        if (!PhysicalKeyState.isSupported(km.getKey().getType())) continue;
-                        counts.merge(km.getKey(), 1, Integer::sum);
-                    }
-                    CONFLICT_KEYS.clear();
-                    for (var entry : counts.entrySet()) {
-                        if (entry.getValue() >= 2) CONFLICT_KEYS.add(entry.getKey());
-                    }
-                    for (KeyMapping km : mc.options.keyMappings) {
-                        boolean member = memberSet.contains(km.getName());
-                        if (!member) continue;
-                        InputConstants.Key key = km.getKey();
-                        boolean supported = PhysicalKeyState.isSupported(key.getType());
-                        if (supported && shouldIncludeWheelKey(member, CONFLICT_KEYS.contains(key))) keys.add(key);
+        var mc = Minecraft.getInstance();
+        if (mc != null && mc.options != null && mc.options.keyMappings != null && KeyWheelConfig.SPEC.isLoaded()) {
+            List<String> members = KeyWheelConfig.currentMembers();
+            if (!members.isEmpty()) {
+                Set<String> memberSet = new HashSet<>(members);
+                rebuildConflicts(mc.options.keyMappings);
+                for (KeyMapping km : mc.options.keyMappings) {
+                    InputConstants.Key key = km.getKey();
+                    if (PhysicalKeyState.isSupported(key)
+                            && shouldIncludeWheelKey(memberSet.contains(km.getName()), CONFLICT_KEYS.contains(key))) {
+                        keys.add(key);
                     }
                 }
             }
-        } catch (Throwable ignored) {}
+        }
         wheelKeysCache = Set.copyOf(keys);
         wheelKeysStamp = now;
         return wheelKeysCache;
@@ -98,17 +87,22 @@ public final class WheelConflictIndex {
 
     private static void ensure() {
         if (initialized) return;
-        initialized = true;
-        var mc = net.minecraft.client.Minecraft.getInstance();
+        var mc = Minecraft.getInstance();
         if (mc == null || mc.options == null || mc.options.keyMappings == null) return;
+        rebuildConflicts(mc.options.keyMappings);
+    }
+
+    private static void rebuildConflicts(KeyMapping[] mappings) {
         Map<InputConstants.Key, Integer> cnt = new HashMap<>();
-        for (KeyMapping km : mc.options.keyMappings) {
+        for (KeyMapping km : mappings) {
             if (km.getCategory().equals("key.categories.keywheel")) continue;
-            if (!PhysicalKeyState.isSupported(km.getKey().getType())) continue;
+            if (!PhysicalKeyState.isSupported(km.getKey())) continue;
             cnt.merge(km.getKey(), 1, Integer::sum);
         }
+        CONFLICT_KEYS.clear();
         for (var e : cnt.entrySet()) {
             if (e.getValue() >= 2) CONFLICT_KEYS.add(e.getKey());
         }
+        initialized = true;
     }
 }

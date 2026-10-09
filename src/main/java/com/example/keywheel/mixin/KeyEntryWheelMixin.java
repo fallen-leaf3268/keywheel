@@ -63,7 +63,8 @@ public abstract class KeyEntryWheelMixin {
     }
 
     private void keywheel$refreshWidget() {
-        boolean show = WheelConflictIndex.contains(key.getKey()) && !key.isUnbound();
+        boolean show = !KeyWheelConfig.isBanned(key.getName())
+                && WheelConflictIndex.contains(key.getKey()) && !key.isUnbound();
         if (wheelWidget == null && show) {
             boolean on = KeyWheelConfig.isMember(key.getName());
             wheelWidget = new WheelToggleWidget(0, 0, on);

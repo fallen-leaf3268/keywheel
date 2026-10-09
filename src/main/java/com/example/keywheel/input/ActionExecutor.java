@@ -46,6 +46,7 @@ public final class ActionExecutor {
     private static void replayWheelAction(
             Minecraft mc, KeyMapping target, InputConstants.Key key, boolean hold) {
         if (!isCurrentMapping(mc, target, key)) return;
+        finishPreviousAction(target);
         if (!SyntheticInputReplayer.replay(target, key, GLFW.GLFW_PRESS)) {
             execute(List.of(target), hold);
             return;
@@ -63,7 +64,7 @@ public final class ActionExecutor {
 
     private static boolean isCurrentMapping(
             Minecraft mc, KeyMapping target, InputConstants.Key capturedKey) {
-        if (mc.options == null || !target.getKey().equals(capturedKey)) return false;
+        if (mc.player == null || mc.options == null || !target.getKey().equals(capturedKey)) return false;
         for (KeyMapping mapping : mc.options.keyMappings) {
             if (mapping == target) return true;
         }
@@ -80,6 +81,7 @@ public final class ActionExecutor {
     }
 
     private static void executeOneShot(List<KeyMapping> targets) {
+        if (SyntheticInputContext.isActive()) return;
         Minecraft mc = Minecraft.getInstance();
         for (KeyMapping target : targets) {
             if (target == null) continue;
@@ -89,6 +91,7 @@ public final class ActionExecutor {
                 continue;
             }
             if (!isCurrentMapping(mc, target, key)) continue;
+            finishPreviousAction(target);
             if (!SyntheticInputReplayer.replay(target, key, GLFW.GLFW_PRESS)) {
                 execute(List.of(target), false);
                 continue;
@@ -100,6 +103,19 @@ public final class ActionExecutor {
                 pendingReplayReleases.put(target, key);
             }
         }
+    }
+
+    private static void finishPreviousAction(KeyMapping target) {
+        InputConstants.Key replayKey;
+        boolean down;
+        synchronized (pendingSetDownFalse) {
+            down = pendingSetDownFalse.removeIf(mapping -> mapping == target) | heldMappings.remove(target);
+            InputConstants.Key pendingKey = pendingReplayReleases.remove(target);
+            InputConstants.Key heldKey = heldReplayKeys.remove(target);
+            replayKey = heldKey != null ? heldKey : pendingKey;
+        }
+        if (replayKey != null) releaseReplay(target, replayKey);
+        else if (down) target.setDown(false);
     }
 
     private static void execute(List<KeyMapping> targets, boolean hold) {
@@ -187,6 +203,19 @@ public final class ActionExecutor {
         }
     }
 
+    public static boolean isHoldingKey(InputConstants.Key key) {
+        if (key == null) return false;
+        synchronized (pendingSetDownFalse) {
+            for (InputConstants.Key heldKey : heldReplayKeys.values()) {
+                if (key.equals(heldKey)) return true;
+            }
+            for (KeyMapping mapping : heldMappings) {
+                if (key.equals(mapping.getKey())) return true;
+            }
+            return false;
+        }
+    }
+
     public static void flushSetDown() {
         Map<KeyMapping, InputConstants.Key> replaying;
         synchronized (pendingSetDownFalse) {
@@ -201,7 +230,10 @@ public final class ActionExecutor {
     }
 
     private static void releaseReplay(KeyMapping mapping, InputConstants.Key key) {
-        SyntheticInputReplayer.replay(mapping, key, GLFW.GLFW_RELEASE);
-        mapping.setDown(false);
+        try {
+            SyntheticInputReplayer.replay(mapping, key, GLFW.GLFW_RELEASE);
+        } finally {
+            mapping.setDown(false);
+        }
     }
 }

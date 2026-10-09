@@ -162,6 +162,7 @@ tasks.named('processResources', ProcessResources).configure {
 
 // 手动把 refmap JSON 从 build/tmp 拷进 jar。SpongePowered Mixin Gradle 0.7-SNAPSHOT 在某些项目配置下不会自动 addMixinsToJar
 tasks.register('copyRefmapToResources') {
+    dependsOn tasks.named('compileJava')
     def src = file("${buildDir}/tmp/compileJava/compileJava-refmap.json")
     def dst = file("${buildDir}/resources/main/keywheel.refmap.json")
     outputs.file(dst)
@@ -224,6 +225,9 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.register('keyWheelRegressionTest', JavaExec) {
     dependsOn testClasses
+    onlyIf('Local regression test source is available') {
+        project.file('src/test/java/com/example/keywheel/input/KeyWheelRegressionTest.java').isFile()
+    }
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.example.keywheel.input.KeyWheelRegressionTest'
     def regressionDir = layout.buildDirectory.dir('regression-test')

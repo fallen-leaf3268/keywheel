@@ -24,4 +24,14 @@ public final class HeldKeyState {
     public boolean isActive() {
         return physicalKey != null;
     }
+
+    public void copyFrom(HeldKeyState state) {
+        reset();
+        if (state == null) return;
+        physicalKey = state.physicalKey;
+        ticksHeld = state.ticksHeld;
+        thresholdReached = state.thresholdReached;
+        memberTargets.addAll(state.memberTargets);
+        nonMemberTargets.addAll(state.nonMemberTargets);
+    }
 }
