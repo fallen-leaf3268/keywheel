@@ -11,10 +11,6 @@ import org.spongepowered.asm.mixin.Overwrite;
 
 @Mixin(value = IForgeKeyMapping.class, remap = false)
 public interface ForgeKeyMappingMixin {
-    /**
-     * @author Lenovo
-     * @reason Block wheel-locked mappings in inventory and other direct Forge matching paths.
-     */
     @Overwrite(remap = false)
     default boolean isActiveAndMatches(InputConstants.Key key) {
         if ((Object) this instanceof KeyMapping mapping) {
